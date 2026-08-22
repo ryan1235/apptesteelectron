@@ -1,6 +1,6 @@
 /**
- * Web Audio API Sound Effects Synthesizer (Discord 2026 Style)
- * Pure synthesized zero-latency audio chimes for voice actions.
+ * Web Audio API Sound Effects Synthesizer (Discord 2026 Pro Studio Quality)
+ * High-fidelity synthesized audio chimes with ADSR envelope, rich harmonics, and zero latency.
  */
 
 class SoundEffectsManager {
@@ -30,7 +30,7 @@ class SoundEffectsManager {
   }
 
   /**
-   * Sound 1: Discord Join Voice Call (Harmonic upward triad)
+   * Sound 1: Discord Voice Connected Chime (Rich 4-chord ascending chime)
    */
   public playJoin() {
     if (!this.enabled) return;
@@ -40,9 +40,10 @@ class SoundEffectsManager {
 
       const now = ctx.currentTime;
       const notes = [
-        { freq: 440, time: 0, dur: 0.08 },     // A4
-        { freq: 554.37, time: 0.07, dur: 0.08 }, // C#5
-        { freq: 659.25, time: 0.14, dur: 0.18 }, // E5
+        { freq: 392.0, time: 0.0, dur: 0.12 },     // G4
+        { freq: 493.88, time: 0.06, dur: 0.12 },   // B4
+        { freq: 587.33, time: 0.12, dur: 0.14 },   // D5
+        { freq: 783.99, time: 0.18, dur: 0.28 },   // G5
       ];
 
       notes.forEach(({ freq, time, dur }) => {
@@ -52,15 +53,15 @@ class SoundEffectsManager {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, now + time);
 
-        gain.gain.setValueAtTime(0.001, now + time);
-        gain.gain.exponentialRampToValueAtTime(0.18, now + time + 0.02);
+        gain.gain.setValueAtTime(0.0001, now + time);
+        gain.gain.exponentialRampToValueAtTime(0.22, now + time + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + time + dur);
 
         osc.connect(gain);
         gain.connect(ctx.destination);
 
         osc.start(now + time);
-        osc.stop(now + time + dur + 0.02);
+        osc.stop(now + time + dur + 0.03);
       });
     } catch (e) {
       console.warn('Sound playJoin error:', e);
@@ -68,7 +69,7 @@ class SoundEffectsManager {
   }
 
   /**
-   * Sound 2: Discord Leave Voice Call (Harmonic downward triad)
+   * Sound 2: Discord Voice Disconnected Chime (Descending 3-chord chime)
    */
   public playLeave() {
     if (!this.enabled) return;
@@ -78,9 +79,9 @@ class SoundEffectsManager {
 
       const now = ctx.currentTime;
       const notes = [
-        { freq: 659.25, time: 0, dur: 0.08 },    // E5
-        { freq: 554.37, time: 0.07, dur: 0.08 }, // C#5
-        { freq: 440, time: 0.14, dur: 0.18 },    // A4
+        { freq: 783.99, time: 0.0, dur: 0.1 },    // G5
+        { freq: 587.33, time: 0.06, dur: 0.1 },   // D5
+        { freq: 392.0, time: 0.12, dur: 0.25 },   // G4
       ];
 
       notes.forEach(({ freq, time, dur }) => {
@@ -90,15 +91,15 @@ class SoundEffectsManager {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, now + time);
 
-        gain.gain.setValueAtTime(0.001, now + time);
-        gain.gain.exponentialRampToValueAtTime(0.18, now + time + 0.02);
+        gain.gain.setValueAtTime(0.0001, now + time);
+        gain.gain.exponentialRampToValueAtTime(0.2, now + time + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + time + dur);
 
         osc.connect(gain);
         gain.connect(ctx.destination);
 
         osc.start(now + time);
-        osc.stop(now + time + dur + 0.02);
+        osc.stop(now + time + dur + 0.03);
       });
     } catch (e) {
       console.warn('Sound playLeave error:', e);
@@ -106,7 +107,7 @@ class SoundEffectsManager {
   }
 
   /**
-   * Sound 3: Mic Mute (Discord mute tone)
+   * Sound 3: Mic Mute (Authentic Discord mute tone)
    */
   public playMute() {
     if (!this.enabled) return;
@@ -119,25 +120,25 @@ class SoundEffectsManager {
       const gain = ctx.createGain();
 
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(320, now);
-      osc.frequency.exponentialRampToValueAtTime(240, now + 0.1);
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.09);
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
 
       osc.start(now);
-      osc.stop(now + 0.11);
+      osc.stop(now + 0.1);
     } catch (e) {
       console.warn('Sound playMute error:', e);
     }
   }
 
   /**
-   * Sound 4: Mic Unmute (Discord unmute tone)
+   * Sound 4: Mic Unmute (Bright Discord unmute tone)
    */
   public playUnmute() {
     if (!this.enabled) return;
@@ -150,25 +151,216 @@ class SoundEffectsManager {
       const gain = ctx.createGain();
 
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(260, now);
-      osc.frequency.exponentialRampToValueAtTime(360, now + 0.1);
+      osc.frequency.setValueAtTime(240, now);
+      osc.frequency.exponentialRampToValueAtTime(380, now + 0.09);
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
 
       osc.start(now);
-      osc.stop(now + 0.11);
+      osc.stop(now + 0.1);
     } catch (e) {
       console.warn('Sound playUnmute error:', e);
     }
   }
 
   /**
-   * Sound 5: User Joined Call
+   * Sound 5: Deafen Chime
+   */
+  public playDeafen() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(150, now + 0.12);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.13);
+    } catch (e) {}
+  }
+
+  /**
+   * Sound 6: Undeafen Chime
+   */
+  public playUndeafen() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(360, now + 0.12);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.13);
+    } catch (e) {}
+  }
+
+  /**
+   * Sound 7: Screen Share Started (Live Fanfare Chime)
+   */
+  public playScreenShareStart() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const notes = [
+        { freq: 523.25, time: 0.0, dur: 0.09 },   // C5
+        { freq: 659.25, time: 0.06, dur: 0.09 },  // E5
+        { freq: 783.99, time: 0.12, dur: 0.12 },  // G5
+        { freq: 1046.5, time: 0.18, dur: 0.3 },   // C6
+      ];
+
+      notes.forEach(({ freq, time, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + time);
+
+        gain.gain.setValueAtTime(0.0001, now + time);
+        gain.gain.exponentialRampToValueAtTime(0.18, now + time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + time + dur);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + time);
+        osc.stop(now + time + dur + 0.02);
+      });
+    } catch (e) {}
+  }
+
+  /**
+   * Sound 8: Screen Share Stopped
+   */
+  public playScreenShareStop() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const notes = [
+        { freq: 1046.5, time: 0.0, dur: 0.08 },   // C6
+        { freq: 783.99, time: 0.06, dur: 0.1 },   // G5
+        { freq: 523.25, time: 0.12, dur: 0.22 },  // C5
+      ];
+
+      notes.forEach(({ freq, time, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + time);
+
+        gain.gain.setValueAtTime(0.0001, now + time);
+        gain.gain.exponentialRampToValueAtTime(0.16, now + time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + time + dur);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + time);
+        osc.stop(now + time + dur + 0.02);
+      });
+    } catch (e) {}
+  }
+
+  /**
+   * Sound 9: Chat Message Notification (Discord Warm Message Pop)
+   */
+  public playMessage() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(784, now);
+      osc.frequency.exponentialRampToValueAtTime(440, now + 0.09);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.14, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.1);
+    } catch (e) {
+      console.warn('Sound playMessage error:', e);
+    }
+  }
+
+  /**
+   * Sound 10: Emoji Floating Reaction Pop
+   */
+  public playReaction() {
+    if (!this.enabled) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.06);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.1, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } catch (e) {}
+  }
+
+  /**
+   * Sound 11: Remote User Joined Room
    */
   public playUserJoined() {
     if (!this.enabled) return;
@@ -185,7 +377,7 @@ class SoundEffectsManager {
       osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.14, now + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
 
       osc.connect(gain);
@@ -199,7 +391,7 @@ class SoundEffectsManager {
   }
 
   /**
-   * Sound 6: User Left Call
+   * Sound 12: Remote User Left Room
    */
   public playUserLeft() {
     if (!this.enabled) return;
@@ -216,7 +408,7 @@ class SoundEffectsManager {
       osc.frequency.setValueAtTime(523.25, now + 0.08); // C5
 
       gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.14, now + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
 
       osc.connect(gain);
@@ -226,37 +418,6 @@ class SoundEffectsManager {
       osc.stop(now + 0.22);
     } catch (e) {
       console.warn('Sound playUserLeft error:', e);
-    }
-  }
-
-  /**
-   * Sound 7: Chat Message Notification (Subtle pop)
-   */
-  public playMessage() {
-    if (!this.enabled) return;
-    try {
-      const ctx = this.getContext();
-      if (!ctx) return;
-
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, now);
-      osc.frequency.exponentialRampToValueAtTime(440, now + 0.08);
-
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.1, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(now);
-      osc.stop(now + 0.09);
-    } catch (e) {
-      console.warn('Sound playMessage error:', e);
     }
   }
 }

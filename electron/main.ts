@@ -8,12 +8,16 @@ let activeProcessCapture: ChildProcess | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-// Enable desktop loopback audio capture, autoplay and suppress DXGI/WGC internal logs
+// Enable desktop loopback audio capture, autoplay, background window capture without throttling
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('log-level', '3');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch(
   'disable-features',
-  'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,AllowWgcScreenCapturer,AllowWgcWindowCapturer'
+  'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,ThrottleDisplayableMojoStreams,WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,AllowWgcScreenCapturer,AllowWgcWindowCapturer'
 );
 
 function getProcessAudioCaptureExePath(): string {

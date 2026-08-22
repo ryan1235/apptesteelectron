@@ -870,9 +870,9 @@ export const App: React.FC = () => {
   const handleToggleDeafen = () => {
     const newDeafened = !isDeafened;
     if (newDeafened) {
-      soundEffects.playMute();
+      soundEffects.playDeafen();
     } else {
-      soundEffects.playUnmute();
+      soundEffects.playUndeafen();
     }
     setIsDeafened(newDeafened);
     audioManagerRef.current.setDeafened(newDeafened);
@@ -902,6 +902,7 @@ export const App: React.FC = () => {
       setLocalScreenStream(stream);
       setIsScreenSharing(true);
       setActiveProfile(profile);
+      soundEffects.playScreenShareStart();
 
       if (activeRoom) {
         // Start GPU WebCodecs Encoder
@@ -929,10 +930,11 @@ export const App: React.FC = () => {
         });
       }
 
-      // Handle stream end (user stops via system OS bar)
+      // Handle stream end (user stops via system OS bar or closes the shared window)
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
         videoTrack.onended = () => {
+          logger.info('SYSTEM', 'A janela compartilhada foi fechada. Encerrando transmissão.');
           stopScreenShare();
         };
       }
@@ -942,6 +944,7 @@ export const App: React.FC = () => {
   };
 
   const stopScreenShare = () => {
+    soundEffects.playScreenShareStop();
     if (window.electronAPI?.stopProcessAudioCapture) {
       window.electronAPI.stopProcessAudioCapture();
     }
@@ -977,6 +980,7 @@ export const App: React.FC = () => {
   // Send Emoji Reaction
   const handleSendReaction = (emoji: string) => {
     if (!activeRoom) return;
+    soundEffects.playReaction();
     const newReaction: FloatingReaction = {
       id: 'react-' + Math.random().toString(36).substring(2, 9),
       emoji,
