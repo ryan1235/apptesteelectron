@@ -9,6 +9,8 @@ import {
   Cpu,
   RefreshCw,
   Eye,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { PresenterInfo, TelemetryStats } from '../../types/live-room';
 
@@ -19,6 +21,8 @@ interface ScreenStageProps {
   telemetry?: TelemetryStats;
   onRequestKeyframe: () => void;
   isLocalUserPresenter: boolean;
+  screenVolume?: number;
+  onScreenVolumeChange?: (volume: number) => void;
 }
 
 export const ScreenStage: React.FC<ScreenStageProps> = ({
@@ -38,6 +42,8 @@ export const ScreenStage: React.FC<ScreenStageProps> = ({
   },
   onRequestKeyframe,
   isLocalUserPresenter,
+  screenVolume = 100,
+  onScreenVolumeChange,
 }) => {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -218,6 +224,35 @@ export const ScreenStage: React.FC<ScreenStageProps> = ({
             <RotateCcw size={14} />
           </button>
         )}
+
+        <div className="w-[1px] h-4 bg-white/20 mx-1" />
+
+        {/* Stream Audio Volume Control */}
+        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
+          <button
+            onClick={() => onScreenVolumeChange?.(screenVolume === 0 ? 100 : 0)}
+            className="p-1 text-discord-textMuted hover:text-white transition-colors"
+            title={screenVolume === 0 ? 'Desmutar Áudio da Transmissão' : 'Mutar Áudio da Transmissão'}
+          >
+            {screenVolume === 0 ? (
+              <VolumeX size={14} className="text-discord-red" />
+            ) : (
+              <Volume2 size={14} className="text-discord-green" />
+            )}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={200}
+            value={screenVolume}
+            onChange={(e) => onScreenVolumeChange?.(Number(e.target.value))}
+            className="w-14 h-1 bg-white/20 accent-discord-green rounded-lg cursor-pointer"
+            title={`Volume da Transmissão: ${screenVolume}%`}
+          />
+          <span className="text-[10px] font-mono font-bold text-white/80 w-6 text-right select-none">
+            {screenVolume}%
+          </span>
+        </div>
 
         <div className="w-[1px] h-4 bg-white/20 mx-1" />
 

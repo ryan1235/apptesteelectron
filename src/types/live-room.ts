@@ -271,6 +271,9 @@ export interface AppConfig {
   echoCancellation: boolean;
   noiseSuppression: boolean;
   autoGainControl: boolean;
+  autoSensitivity: boolean;
+  inputVolume: number;
+  outputVolume: number;
   preventScreenAudioLoopback: boolean;
   vadSensitivity: number; // 0 to 100
   selectedMicrophoneId?: string;

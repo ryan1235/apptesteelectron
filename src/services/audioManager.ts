@@ -20,6 +20,7 @@ export class AudioManager {
   private analyserNode: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
   private scriptProcessorNode: ScriptProcessorNode | null = null;
+  private masterOutputGainNode: GainNode | null = null;
 
   // Local Loopback Test Node (allows user to hear own voice in settings)
   private testGainNode: GainNode | null = null;
@@ -48,6 +49,7 @@ export class AudioManager {
   private lastSpeakingTime: number = 0;
   private silenceTimeoutMs: number = 300;
   private sequenceNumber: number = 0;
+  private noiseFloorRms: number = 0.005;
 
   // Screen Audio Capture state
   private screenAudioStream: MediaStream | null = null;
@@ -62,7 +64,10 @@ export class AudioManager {
   public updateConfig(config: AppConfig) {
     this.config = config;
     if (this.gainNode) {
-      this.gainNode.gain.value = 1.0;
+      this.gainNode.gain.value = (config.inputVolume || 100) / 100;
+    }
+    if (this.masterOutputGainNode) {
+      this.masterOutputGainNode.gain.value = (config.outputVolume || 100) / 100;
     }
   }
 
@@ -205,7 +210,10 @@ export class AudioManager {
       }
     };
 
-    this.playbackNode.connect(this.audioCtx.destination);
+    this.masterOutputGainNode = this.audioCtx.createGain();
+    this.masterOutputGainNode.gain.value = (this.config.outputVolume || 100) / 100;
+    this.playbackNode.connect(this.masterOutputGainNode);
+    this.masterOutputGainNode.connect(this.audioCtx.destination);
   }
 
   /**
@@ -254,9 +262,9 @@ export class AudioManager {
       this.analyserNode.fftSize = 512;
       this.analyserNode.smoothingTimeConstant = 0.3;
 
-      // 4. Gain Node for Master Sensitivity
+      // 4. Gain Node for Master Input Sensitivity
       this.gainNode = ctx.createGain();
-      this.gainNode.gain.value = 1.0;
+      this.gainNode.gain.value = (this.config.inputVolume || 100) / 100;
 
       // 5. ScriptProcessor for direct clean PCM streaming (2048 samples ~42.6ms)
       this.scriptProcessorNode = ctx.createScriptProcessor(2048, 1, 1);
@@ -329,8 +337,17 @@ export class AudioManager {
       const volumeLevel = Math.min(100, Math.round(rms * 280));
       this.onVolumeLevel?.(volumeLevel);
 
-      // Threshold based on vadSensitivity (0..100 -> ~0.01 to 0.15)
-      const threshold = (100 - this.config.vadSensitivity) * 0.001 + 0.008;
+      let threshold: number;
+      if (this.config.autoSensitivity) {
+        // Adapt noise floor when quiet
+        if (!this.isSpeaking) {
+          this.noiseFloorRms = this.noiseFloorRms * 0.94 + rms * 0.06;
+        }
+        threshold = Math.max(0.012, this.noiseFloorRms * 2.5 + 0.008);
+      } else {
+        // Manual threshold based on vadSensitivity (0..100 -> ~0.006 to 0.12)
+        threshold = (100 - this.config.vadSensitivity) * 0.0011 + 0.006;
+      }
 
       const now = performance.now();
       if (rms > threshold) {

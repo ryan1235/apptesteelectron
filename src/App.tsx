@@ -98,6 +98,7 @@ export const App: React.FC = () => {
   const [selectedPasswordRoom, setSelectedPasswordRoom] = useState<RoomSummary | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isScreenSourceModalOpen, setIsScreenSourceModalOpen] = useState<boolean>(false);
+  const [screenAudioVolume, setScreenAudioVolume] = useState<number>(100);
 
   // Service Instances (Refs to preserve across renders)
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1147,6 +1148,11 @@ export const App: React.FC = () => {
               setParticipants((prev) =>
                 prev.map((p) => (p.id === userId ? { ...p, volume: vol } : p))
               );
+            }}
+            screenAudioVolume={screenAudioVolume}
+            onScreenAudioVolumeChange={(vol) => {
+              setScreenAudioVolume(vol);
+              audioManagerRef.current.setScreenAudioVolume(vol);
             }}
           />
         ) : (

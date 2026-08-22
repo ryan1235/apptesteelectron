@@ -387,23 +387,78 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Tab 2: Audio, DSP & Mic Test */}
             {activeTab === 'audio' && (
               <div className="space-y-4 text-xs animate-fade-in">
-                {/* Device Selector */}
-                <div>
-                  <label className="block font-semibold text-discord-textHeader mb-1">
-                    Dispositivo de Entrada (Microfone)
-                  </label>
-                  <select
-                    value={formData.selectedMicrophoneId || ''}
-                    onChange={(e) => setFormData({ ...formData, selectedMicrophoneId: e.target.value })}
-                    className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none"
-                  >
-                    <option value="">Padrão do Sistema</option>
-                    {audioInputDevices.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId}>
-                        {d.label || `Microfone (${d.deviceId.slice(0, 5)})`}
-                      </option>
-                    ))}
-                  </select>
+                {/* Device Selectors & Volumes */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-discord-textHeader mb-1 flex items-center gap-1">
+                      <Mic size={13} className="text-discord-green" />
+                      <span>Dispositivo de Entrada</span>
+                    </label>
+                    <select
+                      value={formData.selectedMicrophoneId || ''}
+                      onChange={(e) => setFormData({ ...formData, selectedMicrophoneId: e.target.value })}
+                      className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none"
+                    >
+                      <option value="">Padrão do Sistema</option>
+                      {audioInputDevices.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || `Microfone (${d.deviceId.slice(0, 5)})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-discord-textHeader mb-1 flex items-center gap-1">
+                      <Volume2 size={13} className="text-discord-accent" />
+                      <span>Dispositivo de Saída</span>
+                    </label>
+                    <select
+                      value={formData.selectedSpeakerId || ''}
+                      onChange={(e) => setFormData({ ...formData, selectedSpeakerId: e.target.value })}
+                      className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none"
+                    >
+                      <option value="">Padrão do Sistema</option>
+                      {audioOutputDevices.map((d) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || `Alto-falantes (${d.deviceId.slice(0, 5)})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Volumes Sliders */}
+                <div className="grid grid-cols-2 gap-3 p-3 bg-[#1e1f22] rounded-xl border border-discord-border">
+                  <div>
+                    <div className="flex justify-between items-center mb-1 text-[11px]">
+                      <span className="font-semibold text-discord-textHeader">Volume de Entrada (Mic)</span>
+                      <span className="font-mono text-discord-green font-bold">{formData.inputVolume || 100}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={200}
+                      value={formData.inputVolume || 100}
+                      onChange={(e) => setFormData({ ...formData, inputVolume: Number(e.target.value) })}
+                      className="w-full accent-discord-green bg-[#111214] rounded-lg cursor-pointer h-1.5"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1 text-[11px]">
+                      <span className="font-semibold text-discord-textHeader">Volume de Saída (Master)</span>
+                      <span className="font-mono text-discord-accent font-bold">{formData.outputVolume || 100}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={200}
+                      value={formData.outputVolume || 100}
+                      onChange={(e) => setFormData({ ...formData, outputVolume: Number(e.target.value) })}
+                      className="w-full accent-discord-accent bg-[#111214] rounded-lg cursor-pointer h-1.5"
+                    />
+                  </div>
                 </div>
 
                 {/* Oscilloscope Waveform & Mic Loopback Test Card */}
@@ -423,16 +478,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }`}
                     >
                       {isTestingMic ? <Square size={13} /> : <Headphones size={13} />}
-                      <span>{isTestingMic ? 'Parar Teste' : 'Testar Microfone (Ouvir a si mesmo)'}</span>
+                      <span>{isTestingMic ? 'Parar Teste' : 'Testar Microfone (Ouvir voz)'}</span>
                     </button>
                   </div>
 
                   {/* Waveform Canvas */}
-                  <div className="w-full h-16 rounded-lg overflow-hidden border border-[#2b2d31]">
+                  <div className="w-full h-14 rounded-lg overflow-hidden border border-[#2b2d31]">
                     <canvas
                       ref={waveCanvasRef}
                       width={500}
-                      height={64}
+                      height={56}
                       className="w-full h-full block bg-[#111214]"
                     />
                   </div>
@@ -440,63 +495,129 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Live RMS Meter */}
                   <div>
                     <div className="flex justify-between items-center mb-1 text-[11px]">
-                      <span className="text-discord-textMuted">Nível de Entrada (Live RMS)</span>
+                      <span className="text-discord-textMuted">Nível de Entrada (Live VU Meter)</span>
                       <span className="font-mono text-discord-green font-bold">{micVolumeLevel}%</span>
                     </div>
                     <div className="relative w-full h-2.5 bg-[#111214] rounded-full overflow-hidden p-0.5 border border-[#2b2d31]">
                       <div
                         className={`h-full rounded-full transition-all duration-75 ${
-                          micVolumeLevel > (100 - formData.vadSensitivity) ? 'bg-discord-green shadow-sm' : 'bg-discord-accent'
+                          micVolumeLevel > (formData.autoSensitivity ? 25 : 100 - formData.vadSensitivity)
+                            ? 'bg-discord-green shadow-sm'
+                            : 'bg-discord-accent'
                         }`}
                         style={{ width: `${Math.min(100, micVolumeLevel)}%` }}
                       />
                       {/* Threshold Marker */}
-                      <div
-                        className="absolute top-0 bottom-0 w-0.5 bg-discord-yellow"
-                        style={{ left: `${Math.max(0, Math.min(100, 100 - formData.vadSensitivity))}%` }}
-                        title="Ponto de corte do Noise Gate"
+                      {!formData.autoSensitivity && (
+                        <div
+                          className="absolute top-0 bottom-0 w-1 bg-discord-yellow rounded-full"
+                          style={{ left: `${Math.max(0, Math.min(100, 100 - formData.vadSensitivity))}%` }}
+                          title="Ponto de corte do Noise Gate"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Input Sensitivity (Auto vs Manual) */}
+                <div className="p-3 bg-[#1e1f22] rounded-xl border border-discord-border space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="font-bold text-discord-textHeader block">
+                        Sensibilidade de Entrada
+                      </label>
+                      <span className="text-[11px] text-discord-textMuted">
+                        Detectar automaticamente quando você está falando ou ajustar o ponto de corte manualmente.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, autoSensitivity: !formData.autoSensitivity })}
+                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${
+                        formData.autoSensitivity ? 'bg-discord-green justify-end' : 'bg-[#35373c] justify-start'
+                      }`}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-md transform transition-transform" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-semibold text-white">
+                      {formData.autoSensitivity ? '✅ Automática (Recomendada)' : '⚙️ Ajuste Manual'}
+                    </span>
+                  </div>
+
+                  {!formData.autoSensitivity && (
+                    <div className="pt-1 space-y-1">
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-discord-textMuted">Limiar de Ativação: {formData.vadSensitivity}%</span>
+                        <span className="text-[10px] text-discord-yellow">Linha amarela no medidor</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={5}
+                        max={95}
+                        value={formData.vadSensitivity}
+                        onChange={(e) => setFormData({ ...formData, vadSensitivity: Number(e.target.value) })}
+                        className="w-full accent-discord-green bg-[#111214] rounded-lg cursor-pointer h-2"
                       />
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                {/* VAD Sensitivity Slider */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="font-semibold text-discord-textHeader flex items-center gap-1.5">
-                      <Sliders size={14} />
-                      <span>Sensibilidade do Noise Gate & VAD: {formData.vadSensitivity}%</span>
-                    </label>
-                  </div>
-                  <input
-                    type="range"
-                    min={5}
-                    max={95}
-                    value={formData.vadSensitivity}
-                    onChange={(e) => setFormData({ ...formData, vadSensitivity: Number(e.target.value) })}
-                    className="w-full accent-discord-green bg-[#1e1f22] rounded-lg cursor-pointer h-2"
-                  />
-                  <div className="flex justify-between text-[10px] text-discord-textMuted mt-1">
-                    <span>Corta ruídos de fundo (Ideal para teclados mecânicos)</span>
-                    <span>Capta sussurros</span>
-                  </div>
-                </div>
+                {/* Advanced Audio Processing Toggles */}
+                <div className="space-y-2">
+                  <span className="font-bold text-discord-textHeader uppercase tracking-wider text-[11px] block">
+                    Processamento Avançado de Voz
+                  </span>
 
-                {/* Studio DSP Badges */}
-                <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
-                  <div className="p-2 bg-[#2b2d31] rounded-lg border border-[#35373c] flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-discord-green" />
-                    <div>
-                      <span className="font-semibold text-white block">Filtro Passa-Alta (85 Hz)</span>
-                      <span className="text-discord-textMuted text-[10px]">Corta vibrações e ventoinhas</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Noise Suppression */}
+                    <div
+                      onClick={() => setFormData({ ...formData, noiseSuppression: !formData.noiseSuppression })}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        formData.noiseSuppression
+                          ? 'bg-discord-green/10 border-discord-green/50 text-white'
+                          : 'bg-[#1e1f22] border-[#2e3035] text-discord-textMuted'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs">Redução de Ruído</span>
+                        <div className={`w-2 h-2 rounded-full ${formData.noiseSuppression ? 'bg-discord-green' : 'bg-gray-600'}`} />
+                      </div>
+                      <span className="text-[10px] block leading-tight">Filtra teclado mecânico e ventiladores</span>
                     </div>
-                  </div>
 
-                  <div className="p-2 bg-[#2b2d31] rounded-lg border border-[#35373c] flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-discord-green" />
-                    <div>
-                      <span className="font-semibold text-white block">Compressor Studio</span>
-                      <span className="text-discord-textMuted text-[10px]">Voz nivelada sem distorção</span>
+                    {/* Echo Cancellation */}
+                    <div
+                      onClick={() => setFormData({ ...formData, echoCancellation: !formData.echoCancellation })}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        formData.echoCancellation
+                          ? 'bg-discord-green/10 border-discord-green/50 text-white'
+                          : 'bg-[#1e1f22] border-[#2e3035] text-discord-textMuted'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs">Cancelamento de Eco</span>
+                        <div className={`w-2 h-2 rounded-full ${formData.echoCancellation ? 'bg-discord-green' : 'bg-gray-600'}`} />
+                      </div>
+                      <span className="text-[10px] block leading-tight">Impede retorno do som dos alto-falantes</span>
+                    </div>
+
+                    {/* Auto Gain Control */}
+                    <div
+                      onClick={() => setFormData({ ...formData, autoGainControl: !formData.autoGainControl })}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        formData.autoGainControl
+                          ? 'bg-discord-green/10 border-discord-green/50 text-white'
+                          : 'bg-[#1e1f22] border-[#2e3035] text-discord-textMuted'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs">Ganho Automático</span>
+                        <div className={`w-2 h-2 rounded-full ${formData.autoGainControl ? 'bg-discord-green' : 'bg-gray-600'}`} />
+                      </div>
+                      <span className="text-[10px] block leading-tight">Nivela volume de vozes baixas e altas</span>
                     </div>
                   </div>
                 </div>

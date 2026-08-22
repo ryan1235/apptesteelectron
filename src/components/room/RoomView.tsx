@@ -40,6 +40,8 @@ interface RoomViewProps {
   onTyping: (isTyping: boolean) => void;
   onLeaveRoom: () => void;
   onSetUserVolume: (userId: string, volume: number) => void;
+  screenAudioVolume?: number;
+  onScreenAudioVolumeChange?: (volume: number) => void;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -67,6 +69,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onTyping,
   onLeaveRoom,
   onSetUserVolume,
+  screenAudioVolume = 100,
+  onScreenAudioVolumeChange,
 }) => {
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -137,6 +141,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
                   telemetry={telemetry}
                   onRequestKeyframe={onRequestKeyframe}
                   isLocalUserPresenter={isLocalUserPresenter}
+                  screenVolume={screenAudioVolume}
+                  onScreenVolumeChange={onScreenAudioVolumeChange}
                 />
               </div>
 

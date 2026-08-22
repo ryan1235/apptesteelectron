@@ -42,8 +42,11 @@ export function getDefaultConfig(): AppConfig {
     echoCancellation: env.VITE_AUDIO_ECHO_CANCELLATION !== 'false',
     noiseSuppression: env.VITE_AUDIO_NOISE_SUPPRESSION !== 'false',
     autoGainControl: env.VITE_AUDIO_AUTO_GAIN_CONTROL !== 'false',
+    autoSensitivity: true,
+    inputVolume: 100,
+    outputVolume: 100,
     preventScreenAudioLoopback: env.VITE_SCREEN_AUDIO_LOOPBACK_PREVENTION !== 'false',
-    vadSensitivity: 35,
+    vadSensitivity: 40,
     mockMode: false,
   };
 }
