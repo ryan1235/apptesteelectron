@@ -59,14 +59,14 @@ export const ParticipantGrid: React.FC<ParticipantGridProps> = ({
         {participants.map((p) => {
           const isMe = p.id === currentUserId;
           const userVolume = p.volume ?? 100;
-          const isSpeakingNow = p.isSpeaking && p.micOn;
+          const isSpeakingNow = Boolean(p.isSpeaking);
 
           return (
             <div
               key={p.id}
               className={`${cardClasses} ${
                 isSpeakingNow
-                  ? 'ring-2 ring-discord-green border-discord-green shadow-xl shadow-discord-green/20'
+                  ? 'ring-2 ring-discord-green border-discord-green shadow-xl shadow-discord-green/30'
                   : 'hover:border-[#4e5058]'
               }`}
             >
@@ -119,9 +119,17 @@ export const ParticipantGrid: React.FC<ParticipantGridProps> = ({
 
               {/* Bottom Name & Mic Pill (Discord Style Overlay) */}
               <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-xs font-semibold max-w-[85%] shadow-sm">
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg backdrop-blur-md text-white text-xs font-semibold max-w-[85%] shadow-sm ${
+                    !p.micOn
+                      ? 'bg-red-950/80 border border-red-500/40 text-red-200'
+                      : isSpeakingNow
+                      ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-200'
+                      : 'bg-black/60'
+                  }`}
+                >
                   {p.micOn ? (
-                    <Mic size={12} className={isSpeakingNow ? 'text-discord-green' : 'text-discord-textMuted'} />
+                    <Mic size={12} className={isSpeakingNow ? 'text-discord-green animate-pulse' : 'text-discord-textNormal'} />
                   ) : (
                     <MicOff size={12} className="text-discord-red" />
                   )}

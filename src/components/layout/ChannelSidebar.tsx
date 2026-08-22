@@ -192,8 +192,8 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
                                 <div className="flex items-center gap-2 min-w-0">
                                   <div
                                     className={`w-4 h-4 rounded-full overflow-hidden flex-shrink-0 font-bold text-[8px] flex items-center justify-center text-white ${
-                                      participant.isSpeaking && participant.micOn
-                                        ? 'ring-2 ring-discord-green'
+                                      participant.isSpeaking
+                                        ? 'ring-2 ring-discord-green shadow-sm shadow-discord-green'
                                         : 'bg-discord-accent'
                                     }`}
                                   >

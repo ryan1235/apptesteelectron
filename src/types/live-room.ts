@@ -178,6 +178,7 @@ export interface Participant {
   micOn: boolean;
   isSpeaking: boolean;
   isScreenSharing: boolean;
+  clientUserId?: string | null;
   isHost?: boolean;
   joinedAt?: string;
   volume?: number; // 0 to 100 for local playback volume
@@ -203,8 +204,8 @@ export interface FloatingReaction {
 
 export type ClientTxMessage =
   | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null; micOn?: boolean; clientUserId?: string }
-  | { type: 'toggle_mic'; roomId: string; micOn: boolean; clientUserId?: string }
-  | { type: 'user_speaking'; roomId: string; isSpeaking: boolean; clientUserId?: string }
+  | { type: 'toggle_mic'; roomId: string; micOn: boolean; clientUserId?: string; userName?: string }
+  | { type: 'user_speaking'; roomId: string; isSpeaking: boolean; clientUserId?: string; userName?: string }
   | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile; codec?: string; clientUserId?: string }
   | { type: 'stop_screen_share'; roomId: string; clientUserId?: string }
   | { type: 'request_keyframe'; roomId: string }

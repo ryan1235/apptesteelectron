@@ -116,10 +116,53 @@ export const App: React.FC = () => {
   configRef.current = config;
   const isScreenSharingRef = useRef<boolean>(isScreenSharing);
   isScreenSharingRef.current = isScreenSharing;
+  const isMicMutedRef = useRef<boolean>(isMicMuted);
+  isMicMutedRef.current = isMicMuted;
   const localScreenStreamRef = useRef<MediaStream | null>(localScreenStream);
   localScreenStreamRef.current = localScreenStream;
   const activeProfileRef = useRef<QualityProfile>(activeProfile);
   activeProfileRef.current = activeProfile;
+
+  // Remote speaking timeouts map for automatic speaking glow
+  const remoteSpeakingTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+  const markUserSpeaking = useCallback((userIdOrName: string) => {
+    if (!userIdOrName) return;
+
+    setParticipants((prev) =>
+      prev.map((p) => {
+        const matches =
+          p.id === userIdOrName ||
+          p.clientUserId === userIdOrName ||
+          (p.name && p.name.toLowerCase() === userIdOrName.toLowerCase());
+        if (matches) {
+          return { ...p, isSpeaking: true, micOn: true };
+        }
+        return p;
+      })
+    );
+
+    const existing = remoteSpeakingTimeouts.current.get(userIdOrName);
+    if (existing) clearTimeout(existing);
+
+    const timeout = setTimeout(() => {
+      setParticipants((prev) =>
+        prev.map((p) => {
+          const matches =
+            p.id === userIdOrName ||
+            p.clientUserId === userIdOrName ||
+            (p.name && p.name.toLowerCase() === userIdOrName.toLowerCase());
+          if (matches) {
+            return { ...p, isSpeaking: false };
+          }
+          return p;
+        })
+      );
+      remoteSpeakingTimeouts.current.delete(userIdOrName);
+    }, 380);
+
+    remoteSpeakingTimeouts.current.set(userIdOrName, timeout);
+  }, []);
 
   // Initialize Services & Handlers
   useEffect(() => {
@@ -141,12 +184,21 @@ export const App: React.FC = () => {
       },
       (speaking: boolean) => {
         setIsSpeaking(speaking);
+        setParticipants((prev) =>
+          prev.map((p) =>
+            p.id === currentUserIdRef.current ||
+            (p.name && p.name.toLowerCase() === configRef.current.userName.toLowerCase())
+              ? { ...p, isSpeaking: speaking, micOn: !isMicMutedRef.current }
+              : p
+          )
+        );
         if (activeRoomRef.current) {
           ws.sendJson({
             type: 'user_speaking',
             roomId: activeRoomRef.current.id,
             isSpeaking: speaking,
             clientUserId: configRef.current.clientUserId,
+            userName: configRef.current.userName,
           });
         }
       },
@@ -194,6 +246,11 @@ export const App: React.FC = () => {
           return;
         }
         audio.playRemoteAudioChunk(packetType, payload, senderId);
+
+        // Instantly illuminate green speaking indicator on incoming voice
+        if (packetType === PacketType.VOICE_AUDIO_PCM && senderId) {
+          markUserSpeaking(senderId);
+        }
       },
       onConnectionStatus: (status) => {
         setConnectionStatus(status);
@@ -447,30 +504,41 @@ export const App: React.FC = () => {
           break;
         }
 
-        case 'mic_toggled': {
-          const targetId = msg.userId || (msg.user && msg.user.id);
-          const targetName = msg.userName || (msg.user && msg.user.name);
+        case 'mic_toggled':
+        case 'mic_updated':
+        case 'toggle_mic': {
+          const targetId = msg.userId || (msg.user && msg.user.id) || msg.clientUserId || (msg.user && msg.user.clientUserId);
+          const targetName = msg.userName || (msg.user && msg.user.name) || msg.name;
           const micOn = Boolean(msg.micOn !== undefined ? msg.micOn : msg.user?.micOn);
+
           setParticipants((prev) =>
-            prev.map((p) =>
-              p.id === targetId || (targetName && p.name.toLowerCase() === targetName.toLowerCase())
-                ? { ...p, micOn }
-                : p
-            )
+            prev.map((p) => {
+              const matches =
+                (targetId && (p.id === targetId || p.clientUserId === targetId)) ||
+                (targetName && p.name.toLowerCase() === targetName.toLowerCase());
+              return matches
+                ? { ...p, micOn, isSpeaking: micOn ? p.isSpeaking : false }
+                : p;
+            })
           );
           break;
         }
 
-        case 'speaking_updated': {
-          const spkId = msg.userId || (msg.user && msg.user.id);
-          const spkName = msg.userName || (msg.user && msg.user.name);
+        case 'speaking_updated':
+        case 'user_speaking': {
+          const spkId = msg.userId || (msg.user && msg.user.id) || msg.clientUserId || (msg.user && msg.user.clientUserId);
+          const spkName = msg.userName || (msg.user && msg.user.name) || msg.name;
           const isSpeaking = Boolean(msg.isSpeaking !== undefined ? msg.isSpeaking : msg.user?.isSpeaking);
+
           setParticipants((prev) =>
-            prev.map((p) =>
-              p.id === spkId || (spkName && p.name.toLowerCase() === spkName.toLowerCase())
-                ? { ...p, isSpeaking }
-                : p
-            )
+            prev.map((p) => {
+              const matches =
+                (spkId && (p.id === spkId || p.clientUserId === spkId)) ||
+                (spkName && p.name.toLowerCase() === spkName.toLowerCase());
+              return matches
+                ? { ...p, isSpeaking, ...(isSpeaking ? { micOn: true } : {}) }
+                : p;
+            })
           );
           break;
         }
@@ -759,6 +827,7 @@ export const App: React.FC = () => {
     }
 
     setIsMicMuted(newMuted);
+    isMicMutedRef.current = newMuted;
     audioManagerRef.current.setMuted(newMuted);
     if (!newMuted) {
       await audioManagerRef.current.startMicrophone().catch((err) => {
@@ -766,20 +835,24 @@ export const App: React.FC = () => {
       });
     }
 
+    setParticipants((prev) =>
+      prev.map((p) =>
+        p.id === currentUserId ||
+        p.id === currentUserIdRef.current ||
+        (p.name && p.name.toLowerCase() === config.userName.toLowerCase())
+          ? { ...p, micOn: !newMuted, isSpeaking: newMuted ? false : p.isSpeaking }
+          : p
+      )
+    );
+
     if (activeRoom) {
       wsClientRef.current.sendJson({
         type: 'toggle_mic',
         roomId: activeRoom.id,
         micOn: !newMuted,
         clientUserId: config.clientUserId,
+        userName: config.userName,
       });
-      setParticipants((prev) =>
-        prev.map((p) =>
-          p.id === currentUserId || (p.name && p.name.toLowerCase() === config.userName.toLowerCase())
-            ? { ...p, micOn: !newMuted }
-            : p
-        )
-      );
     }
   };
 
