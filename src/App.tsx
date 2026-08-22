@@ -10,6 +10,9 @@ import {
   AppConfig,
   PacketType,
   CreateRoomPayload,
+  LiveGroup,
+  CreateGroupPayload,
+  FloatingReaction,
 } from './types/live-room';
 import { loadSavedConfig, saveConfig } from './config/env';
 import { LiveRoomsApiClient } from './services/api';
@@ -17,6 +20,7 @@ import { LiveRoomWebSocketClient } from './services/websocket';
 import { AudioManager } from './services/audioManager';
 import { WebCodecsVideoPipeline } from './services/videoCodecs';
 import { ScreenCapturer } from './services/screenCapturer';
+import { logger } from './services/logger';
 
 // Layout Components
 import { TitleBar } from './components/layout/TitleBar';
@@ -30,6 +34,7 @@ import { ScreenSourceModal } from './components/room/ScreenSourceModal';
 
 // Modals
 import { CreateRoomModal } from './components/modals/CreateRoomModal';
+import { CreateGroupModal } from './components/modals/CreateGroupModal';
 import { PasswordModal } from './components/modals/PasswordModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { LoginModal } from './components/auth/LoginModal';
@@ -44,13 +49,15 @@ export const App: React.FC = () => {
     'connected' | 'connecting' | 'disconnected' | 'mock'
   >('disconnected');
 
-  // Rooms & Navigation State
+  // Rooms, Groups & Navigation State
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [groups, setGroups] = useState<LiveGroup[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isSyncingRooms, setIsSyncingRooms] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeRoom, setActiveRoom] = useState<RoomDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentUserId, setCurrentUserId] = useState<string>('usr-local-id');
+  const [currentUserId, setCurrentUserId] = useState<string>(() => config.clientUserId || 'usr-local-id');
 
   // Active Call State
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -75,12 +82,14 @@ export const App: React.FC = () => {
     codec: 'H.264 GPU (0xAA)',
   });
 
-  // Chat and Reactions state
+  // Chat, Typing and Reactions state
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
 
   // Modal Visibility States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
+  const [createRoomDefaultGroupId, setCreateRoomDefaultGroupId] = useState<string | undefined>(undefined);
+  const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState<boolean>(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState<boolean>(false);
   const [selectedPasswordRoom, setSelectedPasswordRoom] = useState<RoomSummary | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
@@ -113,88 +122,92 @@ export const App: React.FC = () => {
       video.setTargetCanvas(canvasRef.current);
     }
 
-    // Video callbacks
-    video.setOnVideoPacket((packet) => {
-      ws.sendBinary(packet);
-    });
-
-    video.setOnTelemetryUpdate((stats) => {
-      setTelemetry((prev) => ({
-        ...prev,
-        fps: stats.fps,
-        bitrateKbps: stats.bitrateKbps,
-        codec: stats.codec,
-      }));
-    });
-
-    // Audio callbacks
-    audio.setCallbacks(
-      (packet) => {
-        ws.sendBinary(packet);
-      },
-      (speaking) => {
-        setIsSpeaking(speaking);
-        if (activeRoomRef.current) {
-          ws.sendJson({
-            type: 'user_speaking',
-            roomId: activeRoomRef.current.id,
-            isSpeaking: speaking,
-          });
-          setParticipants((prev) =>
-            prev.map((p) =>
-              p.id === currentUserIdRef.current || (p.name && p.name.toLowerCase() === configRef.current.userName.toLowerCase())
-                ? { ...p, isSpeaking: speaking }
-                : p
-            )
-          );
-        }
-      },
-      (level) => {
-        setMicVolumeLevel(level);
+    // Bind Audio Voice Activity (VAD)
+    audio.onSpeakingChange = (speaking) => {
+      setIsSpeaking(speaking);
+      if (activeRoomRef.current) {
+        ws.sendJson({
+          type: 'user_speaking',
+          roomId: activeRoomRef.current.id,
+          isSpeaking: speaking,
+          clientUserId: configRef.current.clientUserId,
+        });
       }
-    );
+    };
 
-    // WebSocket callbacks
-    ws.setCallbacks({
-      onConnectionStatus: (status) => {
-        setConnectionStatus(status);
-      },
-      onJsonMessage: (msg) => {
-        handleServerRxJson(msg);
-      },
-      onBinaryVideo: (header) => {
-        video.handleIncomingVideoPacket(
-          header.payload,
-          header.isKeyframe,
-          header.timestampUs
-        );
-      },
-      onBinaryAudio: (packetType, payload, senderId) => {
-        audio.playRemoteAudioChunk(packetType, payload, senderId);
-      },
-    });
+    audio.onVolumeChange = (vol) => {
+      setMicVolumeLevel(vol);
+    };
+
+    // Bind WebCodecs Encoded Video Frame Emitter -> Send via WebSocket
+    video.onEncodedFrame = (headerBytes, payloadBytes) => {
+      if (activeRoomRef.current) {
+        ws.sendBinary(headerBytes, payloadBytes);
+      }
+    };
+
+    // Bind WebSocket Handlers
+    ws.onStatusChange = (status) => {
+      setConnectionStatus(status);
+    };
+
+    ws.onJsonMessage = (msg) => {
+      handleServerRxJson(msg);
+    };
+
+    ws.onBinaryMessage = (header, payload) => {
+      switch (header.packetType) {
+        case PacketType.VIDEO_GPU:
+          video.decodeFrame(header, payload);
+          break;
+
+        case PacketType.VOICE_AUDIO_PCM:
+        case PacketType.SCREEN_AUDIO_PCM:
+          audio.handleIncomingAudio(header, payload);
+          break;
+      }
+    };
 
     // Connect WebSocket
     ws.connect();
 
-    // Fetch initial rooms list
+    // Fetch rooms and groups
     fetchRooms();
 
-    // Real-time live room synchronization interval (every 2.5s)
-    const syncInterval = setInterval(() => {
-      fetchRooms(true);
-    }, 2500);
+    // Setup periodic polling for lobby updates
+    const pollInterval = setInterval(() => {
+      if (!activeRoomRef.current) {
+        fetchRooms(true);
+      }
+    }, 10000);
+
+    // Setup periodic Telemetry stats update
+    const statsInterval = setInterval(() => {
+      const vStats = video.getStats();
+      const wsStats = ws.getStats();
+      setTelemetry({
+        fps: vStats.fps,
+        bitrateKbps: Math.round(vStats.bitrateBps / 1000),
+        latencyMs: vStats.latencyMs,
+        packetsReceived: wsStats.packetsReceived,
+        packetsSent: wsStats.packetsSent,
+        bytesReceived: wsStats.bytesReceived,
+        bytesSent: wsStats.bytesSent,
+        audioJitterMs: 5,
+        codec: 'H.264 GPU (0xAA)',
+      });
+    }, 1000);
 
     return () => {
-      clearInterval(syncInterval);
+      clearInterval(pollInterval);
+      clearInterval(statsInterval);
       ws.disconnect();
       audio.stop();
       video.destroy();
-      screenCapturerRef.current.stopCapture();
     };
   }, []);
 
-  // Update canvas target whenever canvasRef changes
+  // Update canvas target when entering room
   useEffect(() => {
     if (canvasRef.current) {
       videoCodecsRef.current.setTargetCanvas(canvasRef.current);
@@ -204,15 +217,15 @@ export const App: React.FC = () => {
   const fetchRooms = async (silent = false) => {
     if (!silent) setIsSyncingRooms(true);
     try {
-      const list = await apiClientRef.current.getLiveRooms();
-      setRooms(list);
+      const [roomsList, groupsList] = await Promise.all([
+        apiClientRef.current.getLiveRooms(),
+        apiClientRef.current.getGroups(),
+      ]);
+      setRooms(roomsList);
+      setGroups(groupsList);
       setAuthError(null);
     } catch (err: any) {
-      if (err.message?.includes('Token') || err.message?.includes('401') || err.message?.includes('Unauthorized')) {
-        setAuthError('Token JWT inválido ou ausente. Faça login com sua conta para sincronizar as salas.');
-      } else {
-        console.warn('Erro ao sincronizar salas:', err);
-      }
+      console.warn('Erro ao sincronizar salas e grupos:', err);
     } finally {
       if (!silent) {
         setTimeout(() => setIsSyncingRooms(false), 300);
@@ -236,48 +249,52 @@ export const App: React.FC = () => {
               type: 'join_room',
               roomId: currentId,
               password: savedPwd,
+              clientUserId: configRef.current.clientUserId,
               userName: configRef.current.userName,
               avatarUrl: configRef.current.avatarUrl || null,
             });
-          }
-          break;
-
-        case 'room_state':
-          if (msg.yourUserId) {
-            setCurrentUserId(msg.yourUserId);
-          }
-          if (Array.isArray(msg.participants)) {
-            setParticipants(
-              msg.participants.map((p: any) => {
-                const isMe =
-                  p.userId === msg.yourUserId ||
-                  p.id === msg.yourUserId ||
-                  (p.name && p.name.toLowerCase() === configRef.current.userName.toLowerCase());
-
-                return {
-                  id: p.userId || p.id || 'usr-' + Math.random().toString(36).substring(2, 7),
-                  name: p.name || p.userName || 'Participante',
-                  avatarUrl: p.avatarUrl || null,
-                  micOn: isMe ? !isMicMuted : Boolean(p.micOn),
-                  isSpeaking: Boolean(p.isSpeaking),
-                  isScreenSharing: Boolean(p.isSharing || p.isScreenSharing || p.isPresenter),
-                  isHost: Boolean(p.isHost),
-                  volume: p.volume ?? 100,
-                };
-              })
-            );
-          }
-          if (msg.activeScreenShare) {
-            setActivePresenter({
-              userId: msg.activeScreenShare.userId || msg.activeScreenShare.presenterId,
-              userName: msg.activeScreenShare.name || msg.activeScreenShare.presenterName || 'Apresentador',
-              qualityProfile: msg.activeScreenShare.qualityProfile || 'SMOOTH_60FPS',
-              startedAt: msg.activeScreenShare.startedAt || new Date().toISOString(),
+            wsClientRef.current.sendJson({
+              type: 'toggle_mic',
+              roomId: currentId,
+              micOn: !isMicMuted,
+              clientUserId: configRef.current.clientUserId,
             });
-          } else if (msg.activePresenter !== undefined) {
-            setActivePresenter(msg.activePresenter);
           }
           break;
+
+        case 'room_state': {
+          const rawParticipants = Array.isArray(msg.participants) ? msg.participants : [];
+          const myId = msg.yourUserId || currentUserIdRef.current;
+
+          const mapped: Participant[] = rawParticipants.map((p: any) => {
+            const isLocal = p.userId === myId || (p.name && p.name.toLowerCase() === configRef.current.userName.toLowerCase());
+            return {
+              id: p.userId || p.id,
+              name: p.name || 'Participante',
+              avatarUrl: p.avatarUrl || null,
+              micOn: isLocal ? !isMicMuted : Boolean(p.micOn),
+              isSpeaking: Boolean(p.isSpeaking),
+              isScreenSharing: Boolean(p.isSharing || p.isScreenSharing),
+              joinedAt: p.joinedAt,
+              volume: 100,
+            };
+          });
+
+          setParticipants(mapped);
+
+          if (msg.activeScreenShare || msg.activePresenter) {
+            const share = msg.activeScreenShare || msg.activePresenter;
+            setActivePresenter({
+              userId: share.userId || share.presenterId,
+              userName: share.name || share.userName || share.presenterName || 'Apresentador',
+              qualityProfile: share.qualityProfile || 'SMOOTH_60FPS',
+              startedAt: share.startedAt || new Date().toISOString(),
+            });
+          } else {
+            setActivePresenter(null);
+          }
+          break;
+        }
 
         case 'user_joined': {
           const userObj = msg.participant || msg.user || msg;
@@ -324,22 +341,23 @@ export const App: React.FC = () => {
         }
 
         case 'screen_share_started': {
-          const presenterId = msg.userId || msg.presenterId || 'presenter';
+          const pId = msg.userId || msg.presenterId;
+          const pName = msg.name || msg.presenterName || msg.userName || 'Apresentador';
           setActivePresenter({
-            userId: presenterId,
-            userName: msg.name || msg.presenterName || 'Apresentador',
+            userId: pId,
+            userName: pName,
             qualityProfile: msg.qualityProfile || 'SMOOTH_60FPS',
             startedAt: new Date().toISOString(),
           });
           setParticipants((prev) =>
-            prev.map((p) => (p.id === presenterId ? { ...p, isScreenSharing: true } : p))
+            prev.map((p) => (p.id === pId ? { ...p, isScreenSharing: true } : p))
           );
           break;
         }
 
         case 'screen_share_stopped': {
           const presenterId = msg.userId || msg.presenterId;
-          if (!presenterId || activePresenter?.userId === presenterId) {
+          if (activePresenter?.userId === presenterId) {
             setActivePresenter(null);
           }
           setParticipants((prev) =>
@@ -438,6 +456,7 @@ export const App: React.FC = () => {
   const handleSelectRoom = async (room: RoomSummary) => {
     const isCreator =
       room.createdBy?.id === currentUserId ||
+      room.clientUserId === currentUserId ||
       room.createdBy?.id === 'usr-local' ||
       (room.createdBy?.name && room.createdBy.name.toLowerCase() === config.userName.toLowerCase());
 
@@ -482,6 +501,9 @@ export const App: React.FC = () => {
             isPasswordProtected: Boolean(found?.isPasswordProtected),
             maxParticipants: found?.maxParticipants || 16,
             occupancy: found?.occupancy || 1,
+            groupId: found?.groupId || null,
+            customRoomId: found?.customRoomId || null,
+            clientUserId: found?.clientUserId || config.clientUserId,
             createdBy: found?.createdBy || { id: 'guest', name: config.userName, avatarUrl: config.avatarUrl || null },
             messages: [],
             createdAt: new Date().toISOString(),
@@ -517,11 +539,12 @@ export const App: React.FC = () => {
         return [selfParticipant, ...prev];
       });
 
-      // Join via WebSocket
+      // Join via WebSocket (with clientUserId)
       wsClientRef.current.sendJson({
         type: 'join_room',
         roomId,
         password,
+        clientUserId: config.clientUserId,
         userName: config.userName,
         avatarUrl: config.avatarUrl || null,
       });
@@ -531,6 +554,7 @@ export const App: React.FC = () => {
         type: 'toggle_mic',
         roomId,
         micOn: !isMicMuted,
+        clientUserId: config.clientUserId,
       });
     } catch (err: any) {
       console.error('Erro ao conectar na sala:', err);
@@ -543,6 +567,7 @@ export const App: React.FC = () => {
       wsClientRef.current.sendJson({
         type: 'leave_room',
         roomId: activeRoom.id,
+        clientUserId: config.clientUserId,
       });
     }
 
@@ -564,7 +589,10 @@ export const App: React.FC = () => {
   // Create room
   const handleCreateRoom = async (payload: CreateRoomPayload) => {
     try {
-      const created = await apiClientRef.current.createRoom(payload);
+      const created = await apiClientRef.current.createRoom({
+        ...payload,
+        clientUserId: config.clientUserId,
+      });
       if (payload.password) {
         knownRoomPasswords.current.set(created.id, payload.password);
       }
@@ -579,6 +607,24 @@ export const App: React.FC = () => {
   const handleDeleteRoom = async (roomId: string) => {
     if (confirm('Tem certeza que deseja encerrar esta sala?')) {
       await apiClientRef.current.closeRoom(roomId);
+      fetchRooms();
+    }
+  };
+
+  // Create Group
+  const handleCreateGroup = async (payload: CreateGroupPayload) => {
+    try {
+      await apiClientRef.current.createGroup(payload);
+      fetchRooms();
+    } catch (err: any) {
+      alert(`Erro ao criar grupo: ${err.message}`);
+    }
+  };
+
+  // Delete Group
+  const handleDeleteGroup = async (groupId: string) => {
+    if (confirm('Tem certeza que deseja excluir este grupo e todas as suas salas?')) {
+      await apiClientRef.current.deleteGroup(groupId);
       fetchRooms();
     }
   };
@@ -599,6 +645,7 @@ export const App: React.FC = () => {
         type: 'toggle_mic',
         roomId: activeRoom.id,
         micOn: !newMuted,
+        clientUserId: config.clientUserId,
       });
       setParticipants((prev) =>
         prev.map((p) =>
@@ -645,6 +692,7 @@ export const App: React.FC = () => {
           type: 'start_screen_share',
           roomId: activeRoom.id,
           qualityProfile: activeProfile,
+          clientUserId: config.clientUserId,
         });
       }
 
@@ -667,6 +715,7 @@ export const App: React.FC = () => {
       wsClientRef.current.sendJson({
         type: 'stop_screen_share',
         roomId: activeRoom.id,
+        clientUserId: config.clientUserId,
       });
     }
   };
@@ -677,7 +726,7 @@ export const App: React.FC = () => {
     const chatMsg: ChatMessage = {
       id: 'msg-' + Date.now(),
       roomId: activeRoom.id,
-      userId: currentUserId || 'usr-local',
+      userId: currentUserId || config.clientUserId || 'usr-local',
       userName: config.userName,
       avatarUrl: config.avatarUrl || null,
       content: text,
@@ -690,6 +739,7 @@ export const App: React.FC = () => {
       roomId: activeRoom.id,
       text,
       content: text,
+      clientUserId: config.clientUserId,
     });
   };
 
@@ -712,6 +762,7 @@ export const App: React.FC = () => {
       roomId: activeRoom.id,
       emoji,
       userName: config.userName,
+      clientUserId: config.clientUserId,
     });
   };
 
@@ -723,6 +774,7 @@ export const App: React.FC = () => {
       roomId: activeRoom.id,
       isTyping,
       userName: config.userName,
+      clientUserId: config.clientUserId,
     });
   };
 
@@ -760,6 +812,11 @@ export const App: React.FC = () => {
     return screenCapturerRef.current.getSources();
   }, []);
 
+  // Filter rooms when a group is selected on the left sidebar
+  const displayedRooms = selectedGroupId
+    ? rooms.filter((r) => r.groupId === selectedGroupId)
+    : rooms;
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-discord-chat font-sans antialiased text-discord-textNormal">
       {/* 1. Custom Frameless Discord TitleBar */}
@@ -773,14 +830,21 @@ export const App: React.FC = () => {
         {/* Left Server Sidebar */}
         <ServerSidebar
           activeView={activeRoom ? 'room' : 'lobby'}
+          groups={groups}
+          selectedGroupId={selectedGroupId}
           onGoToLobby={leaveRoom}
-          onOpenCreateModal={() => setIsCreateModalOpen(true)}
+          onSelectGroup={(gId) => setSelectedGroupId(gId)}
+          onOpenCreateModal={() => {
+            setCreateRoomDefaultGroupId(selectedGroupId || undefined);
+            setIsCreateModalOpen(true);
+          }}
+          onOpenCreateGroupModal={() => setIsCreateGroupModalOpen(true)}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
         />
 
         {/* Channels / Active Users Sidebar */}
         <ChannelSidebar
-          rooms={rooms}
+          rooms={displayedRooms}
           activeRoomId={activeRoom?.id}
           activeRoomParticipants={participants}
           currentUserId={currentUserId}
@@ -788,7 +852,10 @@ export const App: React.FC = () => {
           isSyncing={isSyncingRooms}
           onSearchChange={setSearchQuery}
           onSelectRoom={handleSelectRoom}
-          onOpenCreateModal={() => setIsCreateModalOpen(true)}
+          onOpenCreateModal={() => {
+            setCreateRoomDefaultGroupId(selectedGroupId || undefined);
+            setIsCreateModalOpen(true);
+          }}
           onRefreshRooms={() => fetchRooms(false)}
           userName={config.userName}
           avatarUrl={config.avatarUrl}
@@ -836,6 +903,7 @@ export const App: React.FC = () => {
                   type: 'start_screen_share',
                   roomId: activeRoom.id,
                   qualityProfile: profile,
+                  clientUserId: config.clientUserId,
                 });
               }
             }}
@@ -852,13 +920,19 @@ export const App: React.FC = () => {
           />
         ) : (
           <RoomLobby
-            rooms={rooms}
+            rooms={displayedRooms}
+            groups={groups}
             isSyncing={isSyncingRooms}
             onSelectRoom={handleSelectRoom}
-            onOpenCreateModal={() => setIsCreateModalOpen(true)}
+            onOpenCreateModal={(gId) => {
+              setCreateRoomDefaultGroupId(gId || selectedGroupId || undefined);
+              setIsCreateModalOpen(true);
+            }}
+            onOpenCreateGroupModal={() => setIsCreateGroupModalOpen(true)}
             onDeleteRoom={handleDeleteRoom}
+            onDeleteGroup={handleDeleteGroup}
             onRefreshRooms={() => fetchRooms(false)}
-            currentUserId={currentUserId}
+            currentUserId={config.clientUserId}
           />
         )}
       </div>
@@ -872,8 +946,18 @@ export const App: React.FC = () => {
 
       <CreateRoomModal
         isOpen={isCreateModalOpen}
+        groups={groups}
+        defaultGroupId={createRoomDefaultGroupId}
+        clientUserId={config.clientUserId}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateRoom}
+      />
+
+      <CreateGroupModal
+        isOpen={isCreateGroupModalOpen}
+        clientUserId={config.clientUserId}
+        onClose={() => setIsCreateGroupModalOpen(false)}
+        onCreate={handleCreateGroup}
       />
 
       <PasswordModal

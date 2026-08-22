@@ -8,6 +8,40 @@ export interface UserSummary {
   avatarUrl: string | null;
 }
 
+export interface LiveGroupMember {
+  id: string;
+  clientUserId: string;
+  userName: string;
+  avatarUrl?: string | null;
+  role?: string;
+  joinedAt: string;
+}
+
+export interface LiveGroup {
+  id: string;
+  name: string;
+  description?: string;
+  customGroupId?: string;
+  isPasswordProtected: boolean;
+  avatarUrl?: string | null;
+  clientUserId: string;
+  roomsCount?: number;
+  membersCount?: number;
+  rooms?: RoomSummary[];
+  members?: LiveGroupMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateGroupPayload {
+  name: string;
+  description?: string;
+  password?: string | null;
+  customGroupId?: string;
+  avatarUrl?: string | null;
+  clientUserId?: string;
+}
+
 export interface RoomSummary {
   id: string;
   title: string;
@@ -15,6 +49,9 @@ export interface RoomSummary {
   isPasswordProtected: boolean;
   maxParticipants: number;
   occupancy: number;
+  groupId?: string | null;
+  customRoomId?: string | null;
+  clientUserId?: string | null;
   createdBy: UserSummary;
   createdAt: string;
   updatedAt: string;
@@ -25,6 +62,10 @@ export interface CreateRoomPayload {
   description?: string;
   password?: string | null;
   maxParticipants?: number;
+  groupId?: string | null;
+  customRoomId?: string | null;
+  clientUserId?: string;
+  authorName?: string;
 }
 
 export interface VerifyPasswordPayload {
@@ -54,6 +95,9 @@ export interface RoomDetails {
   isPasswordProtected: boolean;
   maxParticipants: number;
   occupancy: number;
+  groupId?: string | null;
+  customRoomId?: string | null;
+  clientUserId?: string | null;
   createdBy: UserSummary;
   messages: ChatMessage[];
   createdAt: string;
@@ -146,16 +190,16 @@ export interface FloatingReaction {
 }
 
 export type ClientTxMessage =
-  | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null }
-  | { type: 'toggle_mic'; roomId: string; micOn: boolean }
-  | { type: 'user_speaking'; roomId: string; isSpeaking: boolean }
-  | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile }
-  | { type: 'stop_screen_share'; roomId: string }
+  | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null; clientUserId?: string }
+  | { type: 'toggle_mic'; roomId: string; micOn: boolean; clientUserId?: string }
+  | { type: 'user_speaking'; roomId: string; isSpeaking: boolean; clientUserId?: string }
+  | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile; clientUserId?: string }
+  | { type: 'stop_screen_share'; roomId: string; clientUserId?: string }
   | { type: 'request_keyframe'; roomId: string }
-  | { type: 'chat_message'; roomId: string; text?: string; content?: string }
-  | { type: 'typing'; roomId: string; isTyping: boolean; userName?: string }
-  | { type: 'reaction'; roomId: string; emoji: string; userName?: string }
-  | { type: 'leave_room'; roomId: string };
+  | { type: 'chat_message'; roomId: string; text?: string; content?: string; clientUserId?: string }
+  | { type: 'typing'; roomId: string; isTyping: boolean; userName?: string; clientUserId?: string }
+  | { type: 'reaction'; roomId: string; emoji: string; userName?: string; clientUserId?: string }
+  | { type: 'leave_room'; roomId: string; clientUserId?: string };
 
 export type ServerRxMessage =
   | { type: 'connected'; userId: string; userName: string }
@@ -206,6 +250,7 @@ export interface AppConfig {
   apiUrl: string;
   wsUrl: string;
   jwtToken: string;
+  clientUserId: string;
   userName: string;
   avatarUrl: string;
   echoCancellation: boolean;

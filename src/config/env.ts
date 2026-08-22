@@ -1,6 +1,21 @@
 import { AppConfig } from '../types/live-room';
 
 const STORAGE_KEY = 'discord_live_rooms_config_v2';
+const CLIENT_USER_ID_KEY = 'discord_live_rooms_client_user_id';
+
+export function getOrCreateClientUserId(): string {
+  try {
+    let id = localStorage.getItem(CLIENT_USER_ID_KEY);
+    if (!id || id.trim().length === 0) {
+      const rand = Math.random().toString(36).substring(2, 10);
+      id = `usr_app_${rand}`;
+      localStorage.setItem(CLIENT_USER_ID_KEY, id);
+    }
+    return id;
+  } catch (e) {
+    return `usr_app_${Math.random().toString(36).substring(2, 10)}`;
+  }
+}
 
 export function normalizeWsUrl(apiUrl: string, wsUrl: string): string {
   let normalized = wsUrl.trim();
@@ -21,6 +36,7 @@ export function getDefaultConfig(): AppConfig {
     apiUrl,
     wsUrl,
     jwtToken: env.VITE_JWT_TOKEN || '',
+    clientUserId: getOrCreateClientUserId(),
     userName: env.VITE_DEFAULT_USER_NAME || 'Ryan',
     avatarUrl: env.VITE_DEFAULT_AVATAR_URL || '',
     echoCancellation: env.VITE_AUDIO_ECHO_CANCELLATION !== 'false',
@@ -41,6 +57,7 @@ export function loadSavedConfig(): AppConfig {
     return {
       ...defaults,
       ...parsed,
+      clientUserId: parsed.clientUserId || defaults.clientUserId || getOrCreateClientUserId(),
       apiUrl: defaults.apiUrl || parsed.apiUrl,
       wsUrl: normalizeWsUrl(defaults.apiUrl, parsed.wsUrl || defaults.wsUrl),
     };
@@ -56,6 +73,9 @@ export function saveConfig(config: AppConfig): void {
       ...config,
       wsUrl: normalizeWsUrl(config.apiUrl, config.wsUrl),
     };
+    if (config.clientUserId) {
+      localStorage.setItem(CLIENT_USER_ID_KEY, config.clientUserId);
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch (e) {
     console.error('Failed to save config to localStorage', e);
