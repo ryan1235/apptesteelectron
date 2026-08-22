@@ -654,7 +654,7 @@ export const App: React.FC = () => {
       // Play Discord join chime
       soundEffects.playJoin();
 
-      // Join via WebSocket (with clientUserId)
+      // Join via WebSocket (with clientUserId & active mic status)
       wsClientRef.current.sendJson({
         type: 'join_room',
         roomId,
@@ -662,7 +662,18 @@ export const App: React.FC = () => {
         clientUserId: config.clientUserId,
         userName: config.userName,
         avatarUrl: config.avatarUrl || null,
+        micOn: !isMicMuted,
       });
+
+      // Synchronize initial mic state with server
+      if (!isMicMuted) {
+        wsClientRef.current.sendJson({
+          type: 'toggle_mic',
+          roomId,
+          micOn: true,
+          clientUserId: config.clientUserId,
+        });
+      }
     } catch (err: any) {
       console.error('Erro ao conectar na sala:', err);
     }

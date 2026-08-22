@@ -202,7 +202,7 @@ export interface FloatingReaction {
 }
 
 export type ClientTxMessage =
-  | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null; clientUserId?: string }
+  | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null; micOn?: boolean; clientUserId?: string }
   | { type: 'toggle_mic'; roomId: string; micOn: boolean; clientUserId?: string }
   | { type: 'user_speaking'; roomId: string; isSpeaking: boolean; clientUserId?: string }
   | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile; codec?: string; clientUserId?: string }

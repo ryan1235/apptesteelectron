@@ -1,10 +1,15 @@
 import { PacketType, AppConfig } from '../types/live-room';
-import { encodeBinaryPacket, decodeBinaryPacket } from './binaryProtocol';
+import { encodeBinaryPacket } from './binaryProtocol';
 import { logger } from './logger';
 
 export type OnAudioPacketCallback = (packet: ArrayBuffer) => void;
 export type OnSpeakingChangeCallback = (isSpeaking: boolean) => void;
 export type OnVolumeLevelCallback = (level: number) => void; // 0..100 for UI meters
+
+interface AudioQueueItem {
+  samples: Float32Array;
+  offset: number;
+}
 
 export class AudioManager {
   private audioCtx: AudioContext | null = null;
@@ -30,17 +35,19 @@ export class AudioManager {
   private onSpeakingChange: OnSpeakingChangeCallback | null = null;
   private onVolumeLevel: OnVolumeLevelCallback | null = null;
 
-  // Remote audio playback queues per user/stream (Multi-Voice Mixer)
-  private userPlayTimes: Map<string, number> = new Map();
+  // Multi-voice & Screen Continuous Mixer Queues (Jitter-free ring buffer)
+  private playbackNode: ScriptProcessorNode | null = null;
+  private voiceQueues: Map<string, AudioQueueItem[]> = new Map();
+  private screenQueueL: AudioQueueItem[] = [];
+  private screenQueueR: AudioQueueItem[] = [];
   private userVolumes: Map<string, number> = new Map(); // userId -> 0..100
   private screenAudioVolume: number = 100;
 
-  // VAD & Noise Gate DSP state
+  // VAD state
   private vadIntervalId: any = null;
   private lastSpeakingTime: number = 0;
-  private silenceTimeoutMs: number = 300; // debounce before stopping speaking
+  private silenceTimeoutMs: number = 300;
   private sequenceNumber: number = 0;
-  private noiseGateGain: number = 1.0; // Dynamic envelope for smooth gate transitions
 
   // Screen Audio Capture state
   private screenAudioStream: MediaStream | null = null;
@@ -55,7 +62,6 @@ export class AudioManager {
   public updateConfig(config: AppConfig) {
     this.config = config;
     if (this.gainNode) {
-      // Input gain multiplier if needed
       this.gainNode.gain.value = 1.0;
     }
   }
@@ -98,25 +104,122 @@ export class AudioManager {
     return this.analyserNode;
   }
 
+  private ensureAudioContext(): AudioContext {
+    if (!this.audioCtx || this.audioCtx.state === 'closed') {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioCtx = new AudioCtxClass({
+        sampleRate: 48000, // Studio 48kHz PCM standard
+        latencyHint: 'interactive',
+      });
+      this.initContinuousPlaybackPipeline();
+    }
+
+    if (this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume().catch(() => {});
+    }
+
+    return this.audioCtx;
+  }
+
+  /**
+   * Continuous Ring Buffer Playback Mixer:
+   * Consistently mixes all incoming voice streams + screen stereo audio smoothly
+   * on the hardware audio clock without creating/destroying individual buffer nodes.
+   */
+  private initContinuousPlaybackPipeline() {
+    if (!this.audioCtx || this.playbackNode) return;
+
+    // Buffer size 2048 at 48kHz = ~42.6ms per render callback
+    this.playbackNode = this.audioCtx.createScriptProcessor(2048, 0, 2);
+
+    this.playbackNode.onaudioprocess = (e) => {
+      const outL = e.outputBuffer.getChannelData(0);
+      const outR = e.outputBuffer.getChannelData(1);
+      outL.fill(0);
+      outR.fill(0);
+
+      if (this.isDeafened) return;
+
+      const len = outL.length;
+
+      // 1. Mix Voice streams per user
+      for (const [userId, queue] of this.voiceQueues.entries()) {
+        const userVol = (this.userVolumes.get(userId) ?? 100) / 100;
+        if (userVol === 0 || queue.length === 0) continue;
+
+        let outIdx = 0;
+        while (outIdx < len && queue.length > 0) {
+          const item = queue[0];
+          const available = item.samples.length - item.offset;
+          const toCopy = Math.min(len - outIdx, available);
+
+          for (let i = 0; i < toCopy; i++) {
+            const s = item.samples[item.offset + i] * userVol;
+            outL[outIdx + i] += s;
+            outR[outIdx + i] += s;
+          }
+
+          item.offset += toCopy;
+          outIdx += toCopy;
+
+          if (item.offset >= item.samples.length) {
+            queue.shift();
+          }
+        }
+
+        // Limit backlog to 8 chunks (~320ms) to avoid drift
+        if (queue.length > 8) {
+          queue.splice(0, queue.length - 3);
+        }
+      }
+
+      // 2. Mix Screen Stereo stream
+      const screenVol = this.screenAudioVolume / 100;
+      if (screenVol > 0 && this.screenQueueL.length > 0) {
+        let outIdx = 0;
+        while (outIdx < len && this.screenQueueL.length > 0) {
+          const itemL = this.screenQueueL[0];
+          const itemR = this.screenQueueR[0] || itemL;
+          const available = itemL.samples.length - itemL.offset;
+          const toCopy = Math.min(len - outIdx, available);
+
+          for (let i = 0; i < toCopy; i++) {
+            outL[outIdx + i] += itemL.samples[itemL.offset + i] * screenVol;
+            outR[outIdx + i] += itemR.samples[itemR.offset + i] * screenVol;
+          }
+
+          itemL.offset += toCopy;
+          if (itemR !== itemL) itemR.offset += toCopy;
+          outIdx += toCopy;
+
+          if (itemL.offset >= itemL.samples.length) {
+            this.screenQueueL.shift();
+            this.screenQueueR.shift();
+          }
+        }
+
+        if (this.screenQueueL.length > 8) {
+          this.screenQueueL.splice(0, this.screenQueueL.length - 3);
+          this.screenQueueR.splice(0, this.screenQueueR.length - 3);
+        }
+      }
+    };
+
+    this.playbackNode.connect(this.audioCtx.destination);
+  }
+
   /**
    * Initializes local microphone capture with DSP Studio Pipeline:
-   * Mic -> High-Pass (85Hz) -> Studio Compressor -> Analyser -> Gain -> Noise Gate ScriptProcessor
+   * Mic -> High-Pass (85Hz) -> Studio Compressor -> Analyser -> Gain -> ScriptProcessor
    */
   public async startMicrophone(): Promise<void> {
     try {
-      if (!this.audioCtx) {
-        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-        this.audioCtx = new AudioCtxClass({
-          sampleRate: 48000, // Studio 48kHz PCM standard
-          latencyHint: 'interactive',
-        });
+      const ctx = this.ensureAudioContext();
+
+      if (this.micStream) {
+        return; // Already capturing
       }
 
-      if (this.audioCtx.state === 'suspended') {
-        await this.audioCtx.resume();
-      }
-
-      // Constraints with robust Echo Cancellation, Noise Suppression & AGC
       const constraints: MediaStreamConstraints = {
         audio: {
           deviceId: this.config.selectedMicrophoneId ? { exact: this.config.selectedMicrophoneId } : undefined,
@@ -129,17 +232,17 @@ export class AudioManager {
       };
 
       this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
-      this.micSourceNode = this.audioCtx.createMediaStreamSource(this.micStream);
-      logger.success('AUDIO', `Microfone ativado com sucesso (Taxa: ${this.audioCtx.sampleRate} Hz, AEC: ${this.config.echoCancellation})`);
+      this.micSourceNode = ctx.createMediaStreamSource(this.micStream);
+      logger.success('AUDIO', `Microfone ativado com sucesso (Taxa: ${ctx.sampleRate} Hz, AEC: ${this.config.echoCancellation})`);
 
       // 1. High-Pass Filter (85Hz) to remove AC, desk rumble, and fan vibrations
-      this.highPassFilterNode = this.audioCtx.createBiquadFilter();
+      this.highPassFilterNode = ctx.createBiquadFilter();
       this.highPassFilterNode.type = 'highpass';
       this.highPassFilterNode.frequency.value = 85;
       this.highPassFilterNode.Q.value = 0.7;
 
       // 2. Broadcast Voice Dynamics Compressor (levels quiet whispers and loud screams smoothly)
-      this.compressorNode = this.audioCtx.createDynamicsCompressor();
+      this.compressorNode = ctx.createDynamicsCompressor();
       this.compressorNode.threshold.value = -24; // dB
       this.compressorNode.knee.value = 10;
       this.compressorNode.ratio.value = 4;
@@ -147,16 +250,16 @@ export class AudioManager {
       this.compressorNode.release.value = 0.25;
 
       // 3. Analyser Node for VAD, Oscilloscope & Live UI meters
-      this.analyserNode = this.audioCtx.createAnalyser();
+      this.analyserNode = ctx.createAnalyser();
       this.analyserNode.fftSize = 512;
       this.analyserNode.smoothingTimeConstant = 0.3;
 
       // 4. Gain Node for Master Sensitivity
-      this.gainNode = this.audioCtx.createGain();
+      this.gainNode = ctx.createGain();
       this.gainNode.gain.value = 1.0;
 
-      // 5. ScriptProcessor for Noise Gate + PCM Int16 conversion (bufferSize: 2048 samples ~46ms chunk)
-      this.scriptProcessorNode = this.audioCtx.createScriptProcessor(2048, 1, 1);
+      // 5. ScriptProcessor for direct clean PCM streaming (2048 samples ~42.6ms)
+      this.scriptProcessorNode = ctx.createScriptProcessor(2048, 1, 1);
 
       this.scriptProcessorNode.onaudioprocess = (audioProcessingEvent) => {
         if (!this.roomId || this.isMicMuted || !this.onAudioPacket) return;
@@ -184,10 +287,10 @@ export class AudioManager {
       this.gainNode.connect(this.scriptProcessorNode);
 
       // Dummy silence destination to keep ScriptProcessor running without local echo
-      const dummyGain = this.audioCtx.createGain();
+      const dummyGain = ctx.createGain();
       dummyGain.gain.value = 0;
       this.scriptProcessorNode.connect(dummyGain);
-      dummyGain.connect(this.audioCtx.destination);
+      dummyGain.connect(ctx.destination);
 
       this.startVADLoop();
     } catch (err) {
@@ -252,15 +355,16 @@ export class AudioManager {
     if (!this.micStream) {
       await this.startMicrophone();
     }
-    if (!this.audioCtx || !this.gainNode) return;
+    const ctx = this.ensureAudioContext();
+    if (!this.gainNode) return;
 
     if (!this.testGainNode) {
-      this.testGainNode = this.audioCtx.createGain();
+      this.testGainNode = ctx.createGain();
       this.testGainNode.gain.value = 1.0;
     }
 
     this.gainNode.connect(this.testGainNode);
-    this.testGainNode.connect(this.audioCtx.destination);
+    this.testGainNode.connect(ctx.destination);
     this.isTestingMic = true;
     logger.info('AUDIO', 'Teste de microfone (loopback local) iniciado.');
   }
@@ -280,7 +384,7 @@ export class AudioManager {
   }
 
   /**
-   * Starts capturing and streaming Stereo PCM (44.1kHz) audio from a shared screen/application
+   * Starts capturing and streaming Stereo PCM (48kHz) audio from a shared screen/application
    */
   public async startScreenAudioCapture(stream: MediaStream): Promise<boolean> {
     const audioTracks = stream.getAudioTracks();
@@ -289,26 +393,15 @@ export class AudioManager {
       return false;
     }
 
-    if (!this.audioCtx) {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioCtx = new AudioCtxClass({
-        sampleRate: 48000,
-        latencyHint: 'interactive',
-      });
-    }
-
-    if (this.audioCtx.state === 'suspended') {
-      await this.audioCtx.resume();
-    }
-
+    const ctx = this.ensureAudioContext();
     this.stopScreenAudioCapture();
 
     try {
       this.screenAudioStream = new MediaStream([audioTracks[0]]);
-      this.screenAudioSourceNode = this.audioCtx.createMediaStreamSource(this.screenAudioStream);
+      this.screenAudioSourceNode = ctx.createMediaStreamSource(this.screenAudioStream);
 
       // Stereo ScriptProcessor (bufferSize: 2048, 2 inputs, 2 outputs)
-      this.screenScriptProcessorNode = this.audioCtx.createScriptProcessor(2048, 2, 2);
+      this.screenScriptProcessorNode = ctx.createScriptProcessor(2048, 2, 2);
 
       this.screenScriptProcessorNode.onaudioprocess = (e) => {
         if (!this.roomId || !this.onAudioPacket) return;
@@ -340,10 +433,10 @@ export class AudioManager {
       this.screenAudioSourceNode.connect(this.screenScriptProcessorNode);
 
       // Connect to dummy silence to keep processor active without echoing back locally
-      const dummyGain = this.audioCtx.createGain();
+      const dummyGain = ctx.createGain();
       dummyGain.gain.value = 0;
       this.screenScriptProcessorNode.connect(dummyGain);
-      dummyGain.connect(this.audioCtx.destination);
+      dummyGain.connect(ctx.destination);
 
       logger.success('AUDIO', 'Transmissão de áudio da tela (Stereo PCM 48kHz) ativada com sucesso!');
       return true;
@@ -370,87 +463,48 @@ export class AudioManager {
   }
 
   /**
-   * Decodes incoming remote PCM audio packets with multi-voice mixer and adaptive jitter buffer
+   * Queues incoming remote PCM audio packets into continuous jitter-free ring buffer
    */
   public playRemoteAudioChunk(
     packetType: PacketType,
     payload: ArrayBuffer,
-    userId?: string
+    userId: string = '__default__'
   ) {
     if (this.isDeafened) {
       return;
     }
 
-    if (!this.audioCtx) {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioCtx = new AudioCtxClass({
-        sampleRate: 48000,
-        latencyHint: 'interactive',
-      });
-    }
-
-    if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume().catch(() => {});
-    }
+    this.ensureAudioContext();
 
     const int16Array = new Int16Array(payload);
     const float32Array = this.int16ToFloat32(int16Array);
 
-    const isScreenAudio = packetType === PacketType.SCREEN_AUDIO_PCM;
-    const numChannels = isScreenAudio ? 2 : 1;
-    const numFrames = isScreenAudio ? float32Array.length / 2 : float32Array.length;
+    if (packetType === PacketType.SCREEN_AUDIO_PCM) {
+      // Stereo de-interleave
+      const numFrames = Math.floor(float32Array.length / 2);
+      if (numFrames <= 0) return;
 
-    if (numFrames <= 0) return;
-
-    const audioBuffer = this.audioCtx.createBuffer(
-      numChannels,
-      numFrames,
-      this.audioCtx.sampleRate
-    );
-
-    if (numChannels === 1) {
-      audioBuffer.copyToChannel(float32Array as any, 0);
-    } else {
-      // De-interleave stereo
       const left = new Float32Array(numFrames);
       const right = new Float32Array(numFrames);
       for (let i = 0; i < numFrames; i++) {
         left[i] = float32Array[i * 2];
         right[i] = float32Array[i * 2 + 1];
       }
-      audioBuffer.copyToChannel(left as any, 0);
-      audioBuffer.copyToChannel(right as any, 1);
+
+      this.screenQueueL.push({ samples: left, offset: 0 });
+      this.screenQueueR.push({ samples: right, offset: 0 });
+    } else {
+      // Voice Mono
+      if (float32Array.length === 0) return;
+
+      let queue = this.voiceQueues.get(userId);
+      if (!queue) {
+        queue = [];
+        this.voiceQueues.set(userId, queue);
+      }
+
+      queue.push({ samples: float32Array, offset: 0 });
     }
-
-    // Create BufferSourceNode
-    const sourceNode = this.audioCtx.createBufferSource();
-    sourceNode.buffer = audioBuffer;
-
-    // Apply User / Screen Volume Gain
-    const userVolumeMultiplier = userId ? (this.userVolumes.get(userId) ?? 100) / 100 : 1.0;
-    const screenMultiplier = isScreenAudio ? this.screenAudioVolume / 100 : 1.0;
-
-    const gainNode = this.audioCtx.createGain();
-    gainNode.gain.value = userVolumeMultiplier * screenMultiplier;
-
-    sourceNode.connect(gainNode);
-    gainNode.connect(this.audioCtx.destination);
-
-    // Audio scheduling with jitter buffer management per user/source
-    const streamKey = userId || (isScreenAudio ? '__screen__' : '__main__');
-    const currentTime = this.audioCtx.currentTime;
-    let streamNextTime = this.userPlayTimes.get(streamKey) ?? 0;
-
-    // Smooth playback queue: never overlap chunks (which causes repeated echo)
-    if (streamNextTime < currentTime) {
-      streamNextTime = currentTime + 0.005;
-    } else if (streamNextTime > currentTime + 0.25) {
-      // If queue drifted too far (>250ms), resync without building huge latency
-      streamNextTime = currentTime + 0.01;
-    }
-
-    sourceNode.start(streamNextTime);
-    this.userPlayTimes.set(streamKey, streamNextTime + audioBuffer.duration);
   }
 
   /**
@@ -496,27 +550,44 @@ export class AudioManager {
     }
 
     if (this.scriptProcessorNode) {
-      this.scriptProcessorNode.disconnect();
+      try {
+        this.scriptProcessorNode.disconnect();
+      } catch (e) {}
       this.scriptProcessorNode = null;
     }
 
+    if (this.playbackNode) {
+      try {
+        this.playbackNode.disconnect();
+      } catch (e) {}
+      this.playbackNode = null;
+    }
+
     if (this.analyserNode) {
-      this.analyserNode.disconnect();
+      try {
+        this.analyserNode.disconnect();
+      } catch (e) {}
       this.analyserNode = null;
     }
 
     if (this.highPassFilterNode) {
-      this.highPassFilterNode.disconnect();
+      try {
+        this.highPassFilterNode.disconnect();
+      } catch (e) {}
       this.highPassFilterNode = null;
     }
 
     if (this.compressorNode) {
-      this.compressorNode.disconnect();
+      try {
+        this.compressorNode.disconnect();
+      } catch (e) {}
       this.compressorNode = null;
     }
 
     if (this.gainNode) {
-      this.gainNode.disconnect();
+      try {
+        this.gainNode.disconnect();
+      } catch (e) {}
       this.gainNode = null;
     }
 
@@ -525,6 +596,9 @@ export class AudioManager {
       this.audioCtx = null;
     }
 
+    this.voiceQueues.clear();
+    this.screenQueueL = [];
+    this.screenQueueR = [];
     this.isSpeaking = false;
   }
 }
