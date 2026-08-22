@@ -5,9 +5,13 @@ let mainWindow: BrowserWindow | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-// Enable desktop loopback audio capture and autoplay
+// Enable desktop loopback audio capture, autoplay and suppress DXGI/WGC internal logs
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-app.commandLine.appendSwitch('disable-features', 'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer');
+app.commandLine.appendSwitch('log-level', '3');
+app.commandLine.appendSwitch(
+  'disable-features',
+  'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,AllowWgcScreenCapturer,AllowWgcWindowCapturer'
+);
 
 function createWindow() {
   mainWindow = new BrowserWindow({
