@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-discord-border;
+  }
+  
+  body {
+    @apply bg-discord-sidebar text-discord-textNormal;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Custom Discord Scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: #2b2d31;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: #1a1b1e;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #111214;
+  }
+}
+
+/* Frameless Window Drag Region */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Glow Speaking Ring Effect */
+.speaking-glow {
+  box-shadow: 0 0 0 2px #23a55a, 0 0 12px rgba(35, 165, 90, 0.7);
+  border-color: #23a55a;
+}
