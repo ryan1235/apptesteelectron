@@ -244,7 +244,10 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
                 onChange={(e) => setAudioMode(e.target.value as ScreenAudioMode)}
                 className="w-full bg-[#1e1f22] text-xs text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none cursor-pointer"
               >
-                <option value="desktop_loopback">Áudio do Computador (Sistema / Jogos / Mídia)</option>
+                {(selectedSourceId ? !selectedSourceId.startsWith('screen:') : activeTab === 'windows') && (
+                  <option value="app_only">Áudio Exclusivo desta Janela (WASAPI Isolado)</option>
+                )}
+                <option value="desktop_loopback">Áudio Completo do PC (Todo o Sistema)</option>
                 <option value="none">Sem Áudio (Apenas Vídeo Silencioso)</option>
               </select>
             </div>
@@ -254,6 +257,7 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
           <div className="flex items-center gap-2 px-3 py-2 bg-[#1e1f22]/60 rounded text-[11px] text-discord-textMuted border border-[#2e3035]">
             <ShieldCheck size={14} className="text-discord-accent flex-shrink-0" />
             <span>
+              {audioMode === 'app_only' && 'Captura exclusivamente o áudio deste aplicativo via WASAPI Process Loopback, isolando chamadas do Discord, microfones e outros programas.'}
               {audioMode === 'desktop_loopback' && 'Transmite o áudio do seu computador (jogos, navegadores e programas) em estéreo 48kHz de alta definição.'}
               {audioMode === 'none' && 'Transmite 100% silencioso (apenas o fluxo de imagem da janela ou tela, sem capturar nenhum som do PC).'}
             </span>

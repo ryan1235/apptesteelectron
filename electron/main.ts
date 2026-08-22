@@ -1,7 +1,10 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron';
 import path from 'path';
+import fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null = null;
+let activeProcessCapture: ChildProcess | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -12,6 +15,31 @@ app.commandLine.appendSwitch(
   'disable-features',
   'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,AllowWgcScreenCapturer,AllowWgcWindowCapturer'
 );
+
+function getProcessAudioCaptureExePath(): string {
+  // 1. Packaged app: process.resourcesPath/ProcessAudioCapture.exe
+  const packagedPath = path.join(process.resourcesPath, 'ProcessAudioCapture.exe');
+  if (fs.existsSync(packagedPath)) return packagedPath;
+
+  // 2. dist-electron/ProcessAudioCapture.exe
+  const distPath = path.join(__dirname, 'ProcessAudioCapture.exe');
+  if (fs.existsSync(distPath)) return distPath;
+
+  // 3. native/ProcessAudioCapture.exe
+  const nativePath = path.join(__dirname, '../native/ProcessAudioCapture.exe');
+  if (fs.existsSync(nativePath)) return nativePath;
+
+  return 'native/ProcessAudioCapture.exe';
+}
+
+function stopProcessAudioCapture() {
+  if (activeProcessCapture) {
+    try {
+      activeProcessCapture.kill('SIGKILL');
+    } catch (e) {}
+    activeProcessCapture = null;
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -39,6 +67,7 @@ function createWindow() {
   }
 
   mainWindow.on('closed', () => {
+    stopProcessAudioCapture();
     mainWindow = null;
   });
 
@@ -62,6 +91,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopProcessAudioCapture();
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -90,6 +120,59 @@ ipcMain.handle('get-desktop-sources', async () => {
   }
 });
 
+// Native WASAPI Process Audio Capture handlers
+ipcMain.handle('start-process-audio-capture', async (_event, sourceId: string) => {
+  stopProcessAudioCapture();
+
+  try {
+    const exePath = getProcessAudioCaptureExePath();
+    let args: string[] = [];
+
+    if (sourceId && sourceId.startsWith('window:')) {
+      const parts = sourceId.split(':');
+      const hwnd = parts[1];
+      args = ['--hwnd', hwnd];
+    } else {
+      console.warn('[WASAPI-AUDIO] Process audio capture is only applicable to application windows');
+      return false;
+    }
+
+    console.log(`[WASAPI-AUDIO] Spawning ${exePath} with args:`, args);
+    activeProcessCapture = spawn(exePath, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    activeProcessCapture.stdout?.on('data', (chunk: Buffer) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(
+          'native-process-audio-chunk',
+          chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength)
+        );
+      }
+    });
+
+    activeProcessCapture.stderr?.on('data', (errData: Buffer) => {
+      console.log('[WASAPI-AUDIO]', errData.toString().trim());
+    });
+
+    activeProcessCapture.on('close', (code) => {
+      console.log('[WASAPI-AUDIO] Process exited with code', code);
+      activeProcessCapture = null;
+    });
+
+    return true;
+  } catch (err) {
+    console.error('[WASAPI-AUDIO] Failed to start process audio capture:', err);
+    return false;
+  }
+});
+
+ipcMain.handle('stop-process-audio-capture', async () => {
+  stopProcessAudioCapture();
+  return true;
+});
+
 // Window control IPC handlers
 ipcMain.on('window-minimize', () => {
   mainWindow?.minimize();
@@ -104,6 +187,7 @@ ipcMain.on('window-maximize', () => {
 });
 
 ipcMain.on('window-close', () => {
+  stopProcessAudioCapture();
   mainWindow?.close();
 });
 

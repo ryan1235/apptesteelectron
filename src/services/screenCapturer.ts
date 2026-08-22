@@ -53,16 +53,17 @@ export class ScreenCapturer {
   ): Promise<ScreenCaptureResult> {
     const config = QUALITY_PROFILES[profile];
     const isAudioEnabled = audioMode !== 'none' && audioMode !== false;
-    const isDesktopLoopback = audioMode === 'desktop_loopback' || sourceId.startsWith('screen:');
+    const isAppOnly = audioMode === 'app_only' && !sourceId.startsWith('screen:');
+    const isDesktopLoopback = audioMode === 'desktop_loopback' || (isAudioEnabled && sourceId.startsWith('screen:'));
 
     // If running in Electron with desktopCapturer source ID
     if (window.electronAPI && sourceId) {
       const constraints: any = {
-        audio: isAudioEnabled
+        // If app_only, we let our native WASAPI Process Loopback handle audio so Chromium doesn't leak system audio
+        audio: isDesktopLoopback
           ? {
               mandatory: {
                 chromeMediaSource: 'desktop',
-                ...(isDesktopLoopback ? {} : { chromeMediaSourceId: sourceId }),
               },
             }
           : false,
@@ -84,8 +85,8 @@ export class ScreenCapturer {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         this.activeStream = stream;
 
-        // If loopback audio was explicitly requested and no audio was attached, capture system desktop audio
-        if (isAudioEnabled && isDesktopLoopback && stream.getAudioTracks().length === 0) {
+        // If desktop loopback audio was explicitly requested and no audio track was attached, request it
+        if (isDesktopLoopback && stream.getAudioTracks().length === 0) {
           try {
             const audioStream = await navigator.mediaDevices.getUserMedia({
               audio: {
@@ -103,7 +104,7 @@ export class ScreenCapturer {
           }
         }
 
-        const hasAudio = stream.getAudioTracks().length > 0;
+        const hasAudio = isAppOnly || stream.getAudioTracks().length > 0;
         return {
           stream,
           hasAudio,

@@ -11,6 +11,9 @@ export interface DesktopSource {
 
 export interface ElectronAPI {
   getDesktopSources: () => Promise<DesktopSource[]>;
+  startProcessAudioCapture: (sourceId: string) => Promise<boolean>;
+  stopProcessAudioCapture: () => Promise<boolean>;
+  onNativeProcessAudio: (callback: (chunk: ArrayBuffer) => void) => () => void;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   closeWindow: () => void;

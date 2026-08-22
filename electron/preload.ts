@@ -13,6 +13,19 @@ const electronAPI = {
   getDesktopSources: (): Promise<DesktopSource[]> => {
     return ipcRenderer.invoke('get-desktop-sources');
   },
+  startProcessAudioCapture: (sourceId: string): Promise<boolean> => {
+    return ipcRenderer.invoke('start-process-audio-capture', sourceId);
+  },
+  stopProcessAudioCapture: (): Promise<boolean> => {
+    return ipcRenderer.invoke('stop-process-audio-capture');
+  },
+  onNativeProcessAudio: (callback: (chunk: ArrayBuffer) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, chunk: ArrayBuffer) => callback(chunk);
+    ipcRenderer.on('native-process-audio-chunk', handler);
+    return () => {
+      ipcRenderer.removeListener('native-process-audio-chunk', handler);
+    };
+  },
   minimizeWindow: () => {
     ipcRenderer.send('window-minimize');
   },

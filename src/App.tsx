@@ -175,6 +175,14 @@ export const App: React.FC = () => {
       video.setTargetCanvas(canvasRef.current);
     }
 
+    // Native WASAPI Process-Isolated Audio stream listener
+    let unsubscribeNativeAudio: (() => void) | null = null;
+    if (window.electronAPI?.onNativeProcessAudio) {
+      unsubscribeNativeAudio = window.electronAPI.onNativeProcessAudio((chunk: ArrayBuffer) => {
+        audio.pushNativeProcessAudioChunk(chunk);
+      });
+    }
+
     // Bind Audio Voice Activity & Packet callbacks
     audio.setCallbacks(
       (audioPacket: ArrayBuffer) => {
@@ -272,6 +280,7 @@ export const App: React.FC = () => {
 
     return () => {
       clearInterval(pollInterval);
+      unsubscribeNativeAudio?.();
       ws.disconnect();
       audio.stop();
       video.destroy();
@@ -901,8 +910,11 @@ export const App: React.FC = () => {
           profile
         );
 
-        // Start Stereo Screen Audio Capture & Streaming (only if audio is enabled)
-        if (audioMode !== 'none' && (captureResult.hasAudio || stream.getAudioTracks().length > 0)) {
+        // Start Stereo Screen Audio Capture & Streaming
+        if (audioMode === 'app_only' && window.electronAPI?.startProcessAudioCapture && sourceId.startsWith('window:')) {
+          logger.info('AUDIO', 'Iniciando captura isolada WASAPI de áudio por janela para: ' + sourceId);
+          await window.electronAPI.startProcessAudioCapture(sourceId);
+        } else if (audioMode !== 'none' && (captureResult.hasAudio || stream.getAudioTracks().length > 0)) {
           await audioManagerRef.current.startScreenAudioCapture(stream);
         }
 
@@ -929,6 +941,9 @@ export const App: React.FC = () => {
   };
 
   const stopScreenShare = () => {
+    if (window.electronAPI?.stopProcessAudioCapture) {
+      window.electronAPI.stopProcessAudioCapture();
+    }
     screenCapturerRef.current.stopCapture();
     videoCodecsRef.current.stopEncoding();
     audioManagerRef.current.stopScreenAudioCapture();

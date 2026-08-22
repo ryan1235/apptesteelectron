@@ -463,6 +463,23 @@ export class AudioManager {
   }
 
   /**
+   * Directly feeds raw PCM chunk from native WASAPI Process Loopback capture
+   */
+  public pushNativeProcessAudioChunk(chunk: ArrayBuffer) {
+    if (!this.roomId || !this.onAudioPacket || !chunk || chunk.byteLength === 0) return;
+
+    const packet = encodeBinaryPacket({
+      packetType: PacketType.SCREEN_AUDIO_PCM,
+      roomId: this.roomId,
+      timestampUs: performance.now() * 1000,
+      sequenceNumber: (this.screenAudioSequenceNumber++) & 0xFFFFFF,
+      payload: new Uint8Array(chunk),
+    });
+
+    this.onAudioPacket(packet);
+  }
+
+  /**
    * Queues incoming remote PCM audio packets into continuous jitter-free ring buffer
    */
   public playRemoteAudioChunk(
