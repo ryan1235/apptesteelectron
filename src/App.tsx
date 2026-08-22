@@ -212,36 +212,46 @@ export const App: React.FC = () => {
           break;
 
         case 'room_state':
+          if (msg.yourUserId) {
+            setCurrentUserId(msg.yourUserId);
+          }
           if (Array.isArray(msg.participants)) {
             setParticipants(
               msg.participants.map((p: any) => ({
-                id: p.id || p.userId || 'usr-' + Math.random().toString(36).substring(2, 7),
+                id: p.userId || p.id || 'usr-' + Math.random().toString(36).substring(2, 7),
                 name: p.name || p.userName || 'Participante',
                 avatarUrl: p.avatarUrl || null,
-                micOn: p.micOn !== undefined ? Boolean(p.micOn) : true,
+                micOn: Boolean(p.micOn),
                 isSpeaking: Boolean(p.isSpeaking),
-                isScreenSharing: Boolean(p.isScreenSharing || p.isPresenter),
+                isScreenSharing: Boolean(p.isSharing || p.isScreenSharing || p.isPresenter),
                 isHost: Boolean(p.isHost),
                 volume: p.volume ?? 100,
               }))
             );
           }
-          if (msg.activePresenter !== undefined) {
+          if (msg.activeScreenShare) {
+            setActivePresenter({
+              userId: msg.activeScreenShare.userId || msg.activeScreenShare.presenterId,
+              userName: msg.activeScreenShare.name || msg.activeScreenShare.presenterName || 'Apresentador',
+              qualityProfile: msg.activeScreenShare.qualityProfile || 'SMOOTH_60FPS',
+              startedAt: msg.activeScreenShare.startedAt || new Date().toISOString(),
+            });
+          } else if (msg.activePresenter !== undefined) {
             setActivePresenter(msg.activePresenter);
           }
           break;
 
         case 'user_joined': {
-          const userObj = msg.user || msg;
-          const newUserId = userObj.id || msg.userId || 'usr-' + Math.random().toString(36).substring(2, 7);
+          const userObj = msg.participant || msg.user || msg;
+          const newUserId = userObj.userId || userObj.id || msg.userId || 'usr-' + Math.random().toString(36).substring(2, 7);
           const newUserName = userObj.name || msg.userName || 'Participante';
           const newParticipant: Participant = {
             id: newUserId,
             name: newUserName,
             avatarUrl: userObj.avatarUrl || msg.avatarUrl || null,
-            micOn: userObj.micOn !== undefined ? Boolean(userObj.micOn) : true,
-            isSpeaking: false,
-            isScreenSharing: Boolean(userObj.isScreenSharing || userObj.isPresenter),
+            micOn: Boolean(userObj.micOn),
+            isSpeaking: Boolean(userObj.isSpeaking),
+            isScreenSharing: Boolean(userObj.isSharing || userObj.isScreenSharing),
             volume: 100,
           };
 
@@ -275,25 +285,35 @@ export const App: React.FC = () => {
           break;
         }
 
-        case 'screen_share_started':
+        case 'screen_share_started': {
+          const presenterId = msg.userId || msg.presenterId || 'presenter';
           setActivePresenter({
-            userId: msg.presenterId || msg.userId || 'presenter',
-            userName: msg.presenterName || msg.userName || 'Apresentador',
+            userId: presenterId,
+            userName: msg.name || msg.presenterName || 'Apresentador',
             qualityProfile: msg.qualityProfile || 'SMOOTH_60FPS',
             startedAt: new Date().toISOString(),
           });
+          setParticipants((prev) =>
+            prev.map((p) => (p.id === presenterId ? { ...p, isScreenSharing: true } : p))
+          );
           break;
+        }
 
-        case 'screen_share_stopped':
-          if (!msg.presenterId || activePresenter?.userId === msg.presenterId) {
+        case 'screen_share_stopped': {
+          const presenterId = msg.userId || msg.presenterId;
+          if (!presenterId || activePresenter?.userId === presenterId) {
             setActivePresenter(null);
           }
+          setParticipants((prev) =>
+            prev.map((p) => (p.id === presenterId ? { ...p, isScreenSharing: false } : p))
+          );
           break;
+        }
 
         case 'mic_updated': {
           const targetId = msg.userId || (msg.user && msg.user.id);
           const targetName = msg.userName || (msg.user && msg.user.name);
-          const micOn = msg.micOn !== undefined ? Boolean(msg.micOn) : Boolean(msg.user?.micOn);
+          const micOn = Boolean(msg.micOn !== undefined ? msg.micOn : msg.user?.micOn);
           setParticipants((prev) =>
             prev.map((p) =>
               p.id === targetId || (targetName && p.name.toLowerCase() === targetName.toLowerCase())
@@ -323,7 +343,7 @@ export const App: React.FC = () => {
             id: msg.id || 'msg-' + Date.now(),
             roomId: msg.roomId || '',
             userId: msg.userId || '',
-            userName: msg.userName || 'Anônimo',
+            userName: msg.userName || msg.name || 'Anônimo',
             avatarUrl: msg.avatarUrl || null,
             content: msg.content || msg.text || '',
             createdAt: msg.createdAt || new Date().toISOString(),
