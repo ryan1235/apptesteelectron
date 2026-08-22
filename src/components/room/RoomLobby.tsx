@@ -11,22 +11,27 @@ import {
   Shield,
   Monitor,
   UserCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { RoomSummary } from '../../types/live-room';
 
 interface RoomLobbyProps {
   rooms: RoomSummary[];
+  isSyncing?: boolean;
   onSelectRoom: (room: RoomSummary) => void;
   onOpenCreateModal: () => void;
   onDeleteRoom: (roomId: string) => void;
+  onRefreshRooms?: () => void;
   currentUserId: string;
 }
 
 export const RoomLobby: React.FC<RoomLobbyProps> = ({
   rooms,
+  isSyncing = false,
   onSelectRoom,
   onOpenCreateModal,
   onDeleteRoom,
+  onRefreshRooms,
   currentUserId,
 }) => {
   const [search, setSearch] = useState('');
@@ -63,6 +68,17 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
               <Plus size={16} className="group-hover:rotate-90 transition-transform" />
               <span>Criar Nova Sala</span>
             </button>
+
+            {onRefreshRooms && (
+              <button
+                onClick={onRefreshRooms}
+                className="px-4 py-2.5 rounded-lg bg-[#2b2d31] hover:bg-[#35373c] text-discord-textNormal text-xs font-semibold transition-all border border-[#3f4147] flex items-center gap-2"
+                title="Atualizar salas disponíveis"
+              >
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin text-discord-accent' : ''} />
+                <span>Atualizar</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -71,11 +87,15 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
       <div className="p-8 max-w-6xl w-full mx-auto space-y-6">
         {/* Search & Stats Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Radio className="text-discord-green" size={20} />
             <h2 className="text-base font-bold text-discord-textHeader">
               Salas Ativas no Servidor ({filtered.length})
             </h2>
+            <div className="flex items-center gap-1.5 text-[11px] text-discord-green bg-discord-green/10 px-2 py-0.5 rounded-full font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-discord-green animate-ping" />
+              <span>Ao Vivo</span>
+            </div>
           </div>
 
           <div className="relative w-full sm:w-72">

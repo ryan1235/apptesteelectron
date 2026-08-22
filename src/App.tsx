@@ -46,6 +46,7 @@ export const App: React.FC = () => {
 
   // Rooms & Navigation State
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [isSyncingRooms, setIsSyncingRooms] = useState<boolean>(false);
   const [activeRoom, setActiveRoom] = useState<RoomDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('usr-local-id');
@@ -159,7 +160,13 @@ export const App: React.FC = () => {
     // Fetch initial rooms list
     fetchRooms();
 
+    // Real-time live room synchronization interval (every 2.5s)
+    const syncInterval = setInterval(() => {
+      fetchRooms(true);
+    }, 2500);
+
     return () => {
+      clearInterval(syncInterval);
       ws.disconnect();
       audio.stop();
       video.destroy();
@@ -174,12 +181,17 @@ export const App: React.FC = () => {
     }
   }, [activePresenter, isScreenSharing]);
 
-  const fetchRooms = async () => {
+  const fetchRooms = async (silent = false) => {
+    if (!silent) setIsSyncingRooms(true);
     try {
       const list = await apiClientRef.current.getLiveRooms();
       setRooms(list);
     } catch (err) {
-      console.warn('Erro ao carregar salas:', err);
+      console.warn('Erro ao sincronizar salas:', err);
+    } finally {
+      if (!silent) {
+        setTimeout(() => setIsSyncingRooms(false), 300);
+      }
     }
   };
 
@@ -521,9 +533,11 @@ export const App: React.FC = () => {
           activeRoomId={activeRoom?.id}
           activeRoomParticipants={participants}
           searchQuery={searchQuery}
+          isSyncing={isSyncingRooms}
           onSearchChange={setSearchQuery}
           onSelectRoom={handleSelectRoom}
           onOpenCreateModal={() => setIsCreateModalOpen(true)}
+          onRefreshRooms={() => fetchRooms(false)}
           userName={config.userName}
           avatarUrl={config.avatarUrl}
           isMicMuted={isMicMuted}
@@ -583,9 +597,11 @@ export const App: React.FC = () => {
         ) : (
           <RoomLobby
             rooms={rooms}
+            isSyncing={isSyncingRooms}
             onSelectRoom={handleSelectRoom}
             onOpenCreateModal={() => setIsCreateModalOpen(true)}
             onDeleteRoom={handleDeleteRoom}
+            onRefreshRooms={() => fetchRooms(false)}
             currentUserId={currentUserId}
           />
         )}

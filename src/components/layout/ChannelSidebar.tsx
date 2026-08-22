@@ -9,6 +9,7 @@ import {
   MicOff,
   Monitor,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { RoomSummary, Participant } from '../../types/live-room';
 import { UserFooter } from './UserFooter';
@@ -18,9 +19,11 @@ interface ChannelSidebarProps {
   activeRoomId?: string;
   activeRoomParticipants?: Participant[];
   searchQuery: string;
+  isSyncing?: boolean;
   onSearchChange: (q: string) => void;
   onSelectRoom: (room: RoomSummary) => void;
   onOpenCreateModal: () => void;
+  onRefreshRooms?: () => void;
   // User state
   userName: string;
   avatarUrl?: string;
@@ -38,9 +41,11 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
   activeRoomId,
   activeRoomParticipants = [],
   searchQuery,
+  isSyncing = false,
   onSearchChange,
   onSelectRoom,
   onOpenCreateModal,
+  onRefreshRooms,
   userName,
   avatarUrl,
   isMicMuted,
@@ -83,19 +88,31 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
 
       {/* Channels & Live Rooms List */}
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
-        {/* Category Header */}
+        {/* Category Header with Live Sync and Create */}
         <div className="flex items-center justify-between px-2 pt-2 pb-1 text-[11px] font-bold text-discord-textMuted tracking-wider uppercase">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <span>Canais Ao Vivo</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-discord-green animate-pulse" title="Sincronizando em tempo real" />
             <span className="text-[10px] text-discord-accent font-normal">({filteredRooms.length})</span>
           </div>
-          <button
-            onClick={onOpenCreateModal}
-            className="hover:text-discord-textHeader transition-colors p-0.5 rounded"
-            title="Criar Sala Ao Vivo"
-          >
-            <Plus size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            {onRefreshRooms && (
+              <button
+                onClick={onRefreshRooms}
+                className="hover:text-discord-textHeader transition-colors p-0.5 rounded"
+                title="Atualizar salas disponíveis"
+              >
+                <RefreshCw size={12} className={isSyncing ? 'animate-spin text-discord-accent' : ''} />
+              </button>
+            )}
+            <button
+              onClick={onOpenCreateModal}
+              className="hover:text-discord-textHeader transition-colors p-0.5 rounded"
+              title="Criar Sala Ao Vivo"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Room Channels */}
