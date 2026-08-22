@@ -684,33 +684,46 @@ export const App: React.FC = () => {
     }
   };
 
-  const startScreenShare = async (sourceId: string) => {
+  const startScreenShare = async (
+    sourceId: string,
+    profile: QualityProfile = activeProfile,
+    captureAudio: boolean = true
+  ) => {
     try {
-      const stream = await screenCapturerRef.current.startCapture(sourceId);
+      const captureResult = await screenCapturerRef.current.startCapture(
+        sourceId,
+        profile,
+        captureAudio
+      );
+      const stream = captureResult.stream;
       setLocalScreenStream(stream);
       setIsScreenSharing(true);
+      setActiveProfile(profile);
 
       if (activeRoom) {
         // Start GPU WebCodecs Encoder
         await videoCodecsRef.current.startEncoding(
           stream,
           activeRoom.id,
-          activeProfile
+          profile
         );
 
         // Notify room via WebSocket
         wsClientRef.current.sendJson({
           type: 'start_screen_share',
           roomId: activeRoom.id,
-          qualityProfile: activeProfile,
+          qualityProfile: profile,
           clientUserId: config.clientUserId,
         });
       }
 
       // Handle stream end (user stops via system OS bar)
-      stream.getVideoTracks()[0].onended = () => {
-        stopScreenShare();
-      };
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopScreenShare();
+        };
+      }
     } catch (err: any) {
       alert(`Erro ao iniciar compartilhamento de tela: ${err.message}`);
     }
