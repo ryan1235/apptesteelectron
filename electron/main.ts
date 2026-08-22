@@ -101,26 +101,32 @@ function startGameScan() {
         }
         if (overlayWindow && !overlayWindow.isDestroyed()) {
           overlayWindow.webContents.send('game-activity-detected', foundGame);
+          // Only show overlay when game is running AND in a voice room
+          if (foundGame && lastOverlayState?.activeRoomTitle) {
+            overlayWindow.showInactive();
+          } else if (!foundGame && !manualOverlayToggle && overlayWindow.isVisible()) {
+            overlayWindow.hide();
+          }
         }
       }
     });
   };
 
   scan();
-  gameScanInterval = setInterval(scan, 6000);
+  gameScanInterval = setInterval(scan, 4000);
 }
+
+let lastOverlayState: any = null;
+let manualOverlayToggle: boolean = false;
 
 function createOverlayWindow() {
   if (overlayWindow) return;
 
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width } = primaryDisplay.workAreaSize;
-
   overlayWindow = new BrowserWindow({
-    width: 380,
-    height: 600,
-    x: 24,
-    y: 24,
+    width: 280,
+    height: 480,
+    x: 20,
+    y: 20,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -128,7 +134,7 @@ function createOverlayWindow() {
     resizable: false,
     hasShadow: false,
     focusable: false,
-    show: false, // will show when room is joined or toggled
+    show: false, // strictly hidden until a game is active in room
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -350,11 +356,15 @@ ipcMain.handle('stop-process-audio-capture', async () => {
 
 // In-Game Overlay IPC Handlers
 ipcMain.on('update-overlay-state', (_event, state) => {
+  lastOverlayState = state;
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.webContents.send('overlay-state-updated', state);
-    if (state.activeRoomTitle && !overlayWindow.isVisible()) {
+
+    // Only show overlay when in a room AND a game is actively detected
+    const shouldShow = Boolean(state.activeRoomTitle && lastDetectedGame);
+    if (shouldShow && !overlayWindow.isVisible()) {
       overlayWindow.showInactive();
-    } else if (!state.activeRoomTitle && overlayWindow.isVisible()) {
+    } else if (!shouldShow && !manualOverlayToggle && overlayWindow.isVisible()) {
       overlayWindow.hide();
     }
   }
@@ -369,8 +379,10 @@ ipcMain.on('set-overlay-ignore-mouse', (_event, ignore: boolean) => {
 ipcMain.on('toggle-overlay-window', () => {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     if (overlayWindow.isVisible()) {
+      manualOverlayToggle = false;
       overlayWindow.hide();
     } else {
+      manualOverlayToggle = true;
       overlayWindow.showInactive();
     }
   }

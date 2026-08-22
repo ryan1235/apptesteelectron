@@ -1,14 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Mic,
   MicOff,
   VolumeX,
   Lock,
   Unlock,
   Gamepad2,
-  Volume2,
-  Sparkles,
-  MessageSquare,
 } from 'lucide-react';
 import { OverlayState, OverlayParticipant, OverlayRecentMessage } from '../../types/live-room';
 
@@ -56,150 +52,116 @@ export const InGameOverlay: React.FC = () => {
     }
   };
 
-  // Only show recent messages from the last 6 seconds
+  // Only show recent messages from the last 4.5 seconds
   const now = Date.now();
   const visibleMessages = state.recentMessages.filter(
-    (msg) => now - msg.timestamp < 6000
+    (msg) => now - msg.timestamp < 4500
   );
 
   return (
     <div
-      className={`w-full h-full p-3 font-sans select-none flex flex-col justify-between transition-all duration-200 ${
-        isInteractive ? 'bg-black/60 backdrop-blur-md ring-1 ring-discord-accent/50 rounded-2xl' : 'bg-transparent'
+      className={`w-full h-full p-2 font-sans select-none flex flex-col justify-between transition-all duration-300 pointer-events-none ${
+        isInteractive
+          ? 'bg-black/40 backdrop-blur-sm ring-1 ring-discord-accent/40 rounded-xl pointer-events-auto'
+          : 'bg-transparent'
       }`}
     >
-      {/* Top Header Bar */}
-      <div className="flex items-center justify-between gap-2 bg-black/75 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shadow-2xl">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2.5 h-2.5 rounded-full bg-discord-green animate-pulse flex-shrink-0" />
-          <span className="text-xs font-bold text-white truncate">
-            {state.activeRoomTitle ? `# ${state.activeRoomTitle}` : 'Discord Live Overlay'}
+      {/* Top Header: Ultra-Discreet Game / Room Pill */}
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10 shadow-sm text-[10px] text-white/90">
+          <span className="w-1.5 h-1.5 rounded-full bg-discord-green flex-shrink-0 animate-pulse" />
+          <span className="truncate max-w-[130px] font-medium">
+            {state.detectedGame || state.activeRoomTitle || 'Discord'}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {state.detectedGame && (
-            <div className="flex items-center gap-1 text-[10px] font-bold text-discord-green bg-discord-green/15 px-2 py-0.5 rounded-full border border-discord-green/30">
-              <Gamepad2 size={11} />
-              <span className="truncate max-w-[90px]">{state.detectedGame}</span>
-            </div>
-          )}
-
-          {/* Interactive / Click-Through Mode Toggle */}
-          <button
-            onClick={toggleInteractive}
-            className={`p-1 rounded-lg transition-colors pointer-events-auto ${
-              isInteractive
-                ? 'bg-discord-accent text-white shadow-lg'
-                : 'text-discord-textMuted hover:text-white bg-white/5'
-            }`}
-            title={isInteractive ? 'Bloquear para o jogo (Click-Through)' : 'Desbloquear Overlay (Interativo)'}
-          >
-            {isInteractive ? <Unlock size={12} /> : <Lock size={12} />}
-          </button>
-        </div>
+        {/* Lock / Interactive Mode Toggle */}
+        <button
+          onClick={toggleInteractive}
+          className={`p-1 rounded-full transition-colors pointer-events-auto backdrop-blur-md ${
+            isInteractive
+              ? 'bg-discord-accent text-white shadow'
+              : 'text-white/40 hover:text-white/90 bg-black/30 border border-white/5'
+          }`}
+          title={isInteractive ? 'Bloquear para o jogo (Click-Through)' : 'Desbloquear (Interativo)'}
+        >
+          {isInteractive ? <Unlock size={10} /> : <Lock size={10} />}
+        </button>
       </div>
 
-      {/* Center / Left: Floating Voice Avatars HUD */}
-      <div className="my-2 space-y-1.5 overflow-y-auto max-h-[300px] pr-1">
-        {state.participants.length === 0 ? (
-          <div className="p-2 bg-black/40 backdrop-blur-sm rounded-xl text-[11px] text-discord-textMuted text-center border border-white/5">
-            Entre em uma sala para ver os avatares aqui no jogo!
-          </div>
-        ) : (
-          state.participants.map((p) => {
-            const isSpeaking = p.isSpeaking;
+      {/* Voice Avatars HUD: Discreet floating circles on the left */}
+      <div className="my-2 space-y-1.5 overflow-hidden">
+        {state.participants.map((p) => {
+          const isSpeaking = p.isSpeaking;
 
-            return (
-              <div
-                key={p.id}
-                className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-all duration-150 backdrop-blur-md shadow-lg ${
-                  isSpeaking
-                    ? 'bg-discord-green/20 border border-discord-green/60 translate-x-1'
-                    : 'bg-black/50 border border-white/5'
-                }`}
-              >
-                {/* Avatar with speaking halo */}
-                <div className="relative flex-shrink-0">
-                  <div
-                    className={`w-7 h-7 rounded-full bg-[#35373c] flex items-center justify-center font-bold text-white text-[11px] overflow-hidden transition-all ${
-                      isSpeaking
-                        ? 'ring-2 ring-discord-green ring-offset-1 ring-offset-black scale-105 shadow-[0_0_12px_rgba(35,165,90,0.8)]'
-                        : 'ring-1 ring-white/10 opacity-80'
-                    }`}
-                  >
-                    {p.avatarUrl ? (
-                      <img src={p.avatarUrl} alt={p.name} className="w-full h-full object-cover" />
-                    ) : (
-                      (p.name || 'U').substring(0, 2).toUpperCase()
-                    )}
-                  </div>
-
-                  {/* Status Indicator */}
-                  {!p.micOn && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-discord-red flex items-center justify-center text-white ring-1 ring-black">
-                      <MicOff size={8} />
-                    </div>
-                  )}
-                  {p.isDeafened && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-discord-red flex items-center justify-center text-white ring-1 ring-black">
-                      <VolumeX size={8} />
-                    </div>
+          return (
+            <div
+              key={p.id}
+              className={`flex items-center gap-2 transition-all duration-150 ${
+                isSpeaking ? 'opacity-100 scale-105 translate-x-1' : 'opacity-40 hover:opacity-80'
+              }`}
+            >
+              {/* Circular Avatar */}
+              <div className="relative flex-shrink-0">
+                <div
+                  className={`w-7 h-7 rounded-full bg-[#2b2d31] flex items-center justify-center font-bold text-white text-[10px] overflow-hidden transition-all duration-150 ${
+                    isSpeaking
+                      ? 'ring-2 ring-emerald-400 ring-offset-1 ring-offset-black/60 shadow-[0_0_10px_rgba(52,211,153,0.9)]'
+                      : 'ring-1 ring-white/15'
+                  }`}
+                >
+                  {p.avatarUrl ? (
+                    <img src={p.avatarUrl} alt={p.name} className="w-full h-full object-cover" />
+                  ) : (
+                    (p.name || 'U').substring(0, 2).toUpperCase()
                   )}
                 </div>
 
-                {/* Name & Game Tag */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1">
-                    <span
-                      className={`text-xs font-bold truncate transition-colors ${
-                        isSpeaking ? 'text-white font-extrabold' : 'text-[#dbdee1]'
-                      }`}
-                    >
-                      {p.name}
-                    </span>
-                    {isSpeaking && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-discord-green animate-ping" />
-                    )}
+                {/* Status Badges */}
+                {!p.micOn && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-600 flex items-center justify-center text-white ring-1 ring-black">
+                    <MicOff size={7} />
                   </div>
-                  {p.activity && (
-                    <span className="text-[9px] text-discord-textMuted truncate block">
-                      {p.activity}
-                    </span>
-                  )}
-                </div>
+                )}
+                {p.isDeafened && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-600 flex items-center justify-center text-white ring-1 ring-black">
+                    <VolumeX size={7} />
+                  </div>
+                )}
               </div>
-            );
-          })
-        )}
+
+              {/* Discreet Name Pill (Only highlights when speaking) */}
+              <div
+                className={`px-2 py-0.5 rounded-md backdrop-blur-md text-[11px] font-semibold truncate max-w-[150px] transition-colors ${
+                  isSpeaking
+                    ? 'bg-black/60 text-white border border-emerald-500/40 shadow-sm font-bold'
+                    : 'bg-black/30 text-white/70 border border-white/5'
+                }`}
+                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}
+              >
+                {p.name}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Bottom: Mini Chat Popup HUD (Auto-fade after 5s) */}
+      {/* Bottom: Mini Chat Notifications (Discreet auto-fading glass pill) */}
       <div className="space-y-1.5 mt-auto">
         {visibleMessages.map((msg) => (
           <div
             key={msg.id}
-            className="flex items-start gap-2 p-2 bg-black/85 backdrop-blur-md rounded-xl border border-white/15 shadow-2xl animate-fade-in text-xs"
+            className="flex items-start gap-1.5 px-2 py-1.5 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 shadow-lg text-[11px] animate-fade-in text-white/90"
+            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
           >
-            <div className="w-6 h-6 rounded-full bg-discord-accent/30 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 mt-0.5">
-              {msg.avatarUrl ? (
-                <img src={msg.avatarUrl} alt={msg.userName} className="w-full h-full object-cover rounded-full" />
-              ) : (
-                msg.userName.substring(0, 1).toUpperCase()
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <span className="font-bold text-white text-[11px] block">{msg.userName}</span>
-              <p className="text-gray-200 text-xs break-words leading-tight">{msg.content}</p>
-            </div>
+            <span className="font-bold text-discord-accent flex-shrink-0">
+              {msg.userName}:
+            </span>
+            <span className="text-gray-200 break-words leading-tight flex-1">
+              {msg.content}
+            </span>
           </div>
         ))}
-
-        {/* Global Hotkey Hint Footer */}
-        <div className="flex items-center justify-between text-[10px] text-discord-textMuted px-1 font-mono pt-1">
-          <span>Ctrl+Shift+M: Mute</span>
-          <span>Ctrl+Shift+O: Overlay</span>
-        </div>
       </div>
     </div>
   );
