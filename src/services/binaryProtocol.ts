@@ -106,7 +106,7 @@ export function decodeBinaryPacket(buffer: ArrayBuffer): BinaryHeader | null {
   const timestampUs = view.getFloat64(39, false);
 
   const seq = (uint8View[47] << 16) | (uint8View[48] << 8) | uint8View[49];
-  const payload = uint8View.subarray(HEADER_SIZE);
+  const payload = uint8View.slice(HEADER_SIZE);
 
   return {
     magic: BINARY_MAGIC_BYTE,

@@ -305,7 +305,8 @@ export class WebCodecsVideoPipeline {
         frame.close();
       },
       error: (err: any) => {
-        console.warn('VideoDecoder erro interno:', err);
+        const errMsg = err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.warn('VideoDecoder erro interno:', errMsg);
         this.isDecoderConfigured = false;
         this.hasReceivedKeyframe = false;
         this.requestKeyframeThrottle();
@@ -359,10 +360,15 @@ export class WebCodecsVideoPipeline {
     }
 
     try {
+      const cleanData =
+        payload.byteOffset === 0 && payload.buffer.byteLength === payload.byteLength
+          ? payload
+          : payload.slice();
+
       const chunk = new (window as any).EncodedVideoChunk({
         type: isKeyframe ? 'key' : 'delta',
-        timestamp: timestampUs,
-        data: payload,
+        timestamp: Math.max(0, Math.floor(timestampUs)),
+        data: cleanData,
       });
 
       this.decoder.decode(chunk);
@@ -370,8 +376,8 @@ export class WebCodecsVideoPipeline {
       this.bytesCountInInterval += payload.byteLength;
       this.framesCountInInterval++;
       this.totalFramesDecoded++;
-    } catch (err) {
-      console.warn('Erro ao decodificar EncodedVideoChunk:', err);
+    } catch (err: any) {
+      console.warn('Erro ao decodificar EncodedVideoChunk:', err?.message || err);
       this.hasReceivedKeyframe = false;
       this.requestKeyframeThrottle();
     }
