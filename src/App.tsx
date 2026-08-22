@@ -253,12 +253,6 @@ export const App: React.FC = () => {
               userName: configRef.current.userName,
               avatarUrl: configRef.current.avatarUrl || null,
             });
-            wsClientRef.current.sendJson({
-              type: 'toggle_mic',
-              roomId: currentId,
-              micOn: !isMicMuted,
-              clientUserId: configRef.current.clientUserId,
-            });
           }
           break;
 
@@ -558,14 +552,6 @@ export const App: React.FC = () => {
         clientUserId: config.clientUserId,
         userName: config.userName,
         avatarUrl: config.avatarUrl || null,
-      });
-
-      // Synchronize mic state to server
-      wsClientRef.current.sendJson({
-        type: 'toggle_mic',
-        roomId,
-        micOn: !isMicMuted,
-        clientUserId: config.clientUserId,
       });
     } catch (err: any) {
       console.error('Erro ao conectar na sala:', err);

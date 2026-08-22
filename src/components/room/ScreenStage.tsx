@@ -16,7 +16,7 @@ interface ScreenStageProps {
   presenter: PresenterInfo | null;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   localStream: MediaStream | null;
-  telemetry: TelemetryStats;
+  telemetry?: TelemetryStats;
   onRequestKeyframe: () => void;
   isLocalUserPresenter: boolean;
 }
@@ -25,7 +25,17 @@ export const ScreenStage: React.FC<ScreenStageProps> = ({
   presenter,
   canvasRef,
   localStream,
-  telemetry,
+  telemetry = {
+    fps: 60,
+    bitrateKbps: 3800,
+    latencyMs: 30,
+    packetsReceived: 0,
+    packetsSent: 0,
+    bytesReceived: 0,
+    bytesSent: 0,
+    audioJitterMs: 5,
+    codec: 'H.264 GPU (0xAA)',
+  },
   onRequestKeyframe,
   isLocalUserPresenter,
 }) => {
@@ -99,6 +109,11 @@ export const ScreenStage: React.FC<ScreenStageProps> = ({
     transformOrigin: 'center center',
   };
 
+  const currentFps = telemetry?.fps || 60;
+  const currentBitrate = telemetry?.bitrateKbps && telemetry.bitrateKbps > 0 ? (telemetry.bitrateKbps / 1000).toFixed(2) : '3.85';
+  const currentLatency = telemetry?.latencyMs || 30;
+  const currentCodec = telemetry?.codec || 'H.264 GPU (0xAA)';
+
   return (
     <div
       ref={containerRef}
@@ -131,7 +146,7 @@ export const ScreenStage: React.FC<ScreenStageProps> = ({
       <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/65 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10 text-xs shadow-lg">
         <div className="w-2.5 h-2.5 rounded-full bg-discord-green animate-pulse" />
         <span className="font-semibold text-white">
-          {isLocalUserPresenter ? 'Você está transmitindo tela (GPU)' : presenter ? presenter.userName : 'Transmissão Ao Vivo'}
+          {isLocalUserPresenter ? 'Você está transmitindo tela (GPU)' : presenter?.userName || 'Transmissão Ao Vivo'}
         </span>
         <span className="text-discord-textMuted font-mono text-[11px]">
           ({presenter?.qualityProfile || 'SMOOTH_60FPS'})
@@ -146,17 +161,17 @@ export const ScreenStage: React.FC<ScreenStageProps> = ({
               <Activity size={13} />
               <span>FPS:</span>
             </span>
-            <span>{telemetry.fps || 60} fps</span>
+            <span>{currentFps} fps</span>
           </div>
 
           <div className="flex items-center justify-between gap-4 text-discord-accent font-semibold">
             <span>Bitrate:</span>
-            <span>{telemetry.bitrateKbps > 0 ? (telemetry.bitrateKbps / 1000).toFixed(2) : '3.85'} Mbps</span>
+            <span>{currentBitrate} Mbps</span>
           </div>
 
           <div className="flex items-center justify-between gap-4 text-discord-yellow">
             <span>Latência:</span>
-            <span>~{telemetry.latencyMs || 30} ms</span>
+            <span>~{currentLatency} ms</span>
           </div>
 
           <div className="flex items-center justify-between gap-4 text-discord-textMuted pt-1.5 border-t border-white/10 text-[10px]">
@@ -164,7 +179,7 @@ export const ScreenStage: React.FC<ScreenStageProps> = ({
               <Cpu size={11} />
               <span>WebCodecs:</span>
             </span>
-            <span>{telemetry.codec || 'H.264 GPU (0xAA)'}</span>
+            <span>{currentCodec}</span>
           </div>
         </div>
       )}
