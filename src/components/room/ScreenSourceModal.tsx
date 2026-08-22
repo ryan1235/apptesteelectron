@@ -237,16 +237,15 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-discord-textMuted mb-1.5 flex items-center gap-1">
                 <Volume2 size={12} className="text-discord-green" />
-                <span>Transmissão de Áudio</span>
+                <span>Áudio da Transmissão</span>
               </label>
               <select
                 value={audioMode}
                 onChange={(e) => setAudioMode(e.target.value as ScreenAudioMode)}
                 className="w-full bg-[#1e1f22] text-xs text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none cursor-pointer"
               >
-                <option value="app_only">Apenas o Áudio do Aplicativo (Recomendado)</option>
-                <option value="desktop_loopback">Áudio Completo do PC (Todo o Sistema)</option>
-                <option value="none">Sem Áudio (Apenas Vídeo)</option>
+                <option value="desktop_loopback">Áudio do Computador (Sistema / Jogos / Mídia)</option>
+                <option value="none">Sem Áudio (Apenas Vídeo Silencioso)</option>
               </select>
             </div>
           </div>
@@ -255,9 +254,8 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
           <div className="flex items-center gap-2 px-3 py-2 bg-[#1e1f22]/60 rounded text-[11px] text-discord-textMuted border border-[#2e3035]">
             <ShieldCheck size={14} className="text-discord-accent flex-shrink-0" />
             <span>
-              {audioMode === 'app_only' && 'Transmite apenas o som da janela escolhida sem eco ou vazamento de chamadas externas.'}
-              {audioMode === 'desktop_loopback' && 'Transmite todos os sons do Windows (jogos, música e navegadores) em estéreo 44.1kHz.'}
-              {audioMode === 'none' && 'Transmite apenas o fluxo de imagem em alta taxa de quadros sem áudio.'}
+              {audioMode === 'desktop_loopback' && 'Transmite o áudio do seu computador (jogos, navegadores e programas) em estéreo 48kHz de alta definição.'}
+              {audioMode === 'none' && 'Transmite 100% silencioso (apenas o fluxo de imagem da janela ou tela, sem capturar nenhum som do PC).'}
             </span>
           </div>
 
