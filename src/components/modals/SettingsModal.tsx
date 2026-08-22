@@ -16,14 +16,20 @@ import {
   Trash2,
   Check,
   RefreshCw,
+  Play,
+  Square,
+  Activity,
+  Headphones,
 } from 'lucide-react';
 import { AppConfig } from '../../types/live-room';
 import { logger, LogEntry, LogCategory } from '../../services/logger';
+import { AudioManager } from '../../services/audioManager';
 
 interface SettingsModalProps {
   isOpen: boolean;
   config: AppConfig;
   micVolumeLevel: number;
+  audioManager?: AudioManager;
   onClose: () => void;
   onSaveConfig: (config: AppConfig) => void;
 }
@@ -34,6 +40,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   config,
   micVolumeLevel,
+  audioManager,
   onClose,
   onSaveConfig,
 }) => {
@@ -42,6 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDeviceInfo[]>([]);
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [isTestingMic, setIsTestingMic] = useState(false);
 
   // Logs Tab State
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -49,13 +57,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [copiedLogs, setCopiedLogs] = useState<boolean>(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const waveCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     setFormData({ ...config });
   }, [config, isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      if (isTestingMic && audioManager) {
+        audioManager.stopMicTest();
+        setIsTestingMic(false);
+      }
+      return;
+    }
 
     // Enumerate audio devices
     navigator.mediaDevices?.enumerateDevices().then((devices) => {
@@ -72,8 +87,79 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     return () => {
       unsubscribe();
+      if (audioManager) {
+        audioManager.stopMicTest();
+      }
     };
   }, [isOpen]);
+
+  // Live Oscilloscope Waveform Animation
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'audio' || !audioManager) return;
+    let animationFrameId: number;
+
+    const canvas = waveCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const analyser = audioManager.getAnalyser();
+    const bufferLength = analyser?.frequencyBinCount || 256;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      animationFrameId = requestAnimationFrame(draw);
+
+      if (analyser) {
+        analyser.getByteTimeDomainData(dataArray);
+      } else {
+        dataArray.fill(128);
+      }
+
+      ctx.fillStyle = '#111214';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw Grid / Center line
+      ctx.strokeStyle = '#232428';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+
+      // Draw Waveform
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = micVolumeLevel > (100 - formData.vadSensitivity) ? '#23a55a' : '#5865F2';
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 4;
+      ctx.beginPath();
+
+      const sliceWidth = (canvas.width * 1.0) / bufferLength;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * canvas.height) / 2;
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+        x += sliceWidth;
+      }
+
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    };
+
+    draw();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isOpen, activeTab, audioManager, micVolumeLevel, formData.vadSensitivity]);
 
   useEffect(() => {
     if (activeTab === 'logs' && autoScroll && logContainerRef.current) {
@@ -83,7 +169,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleToggleMicTest = async () => {
+    if (!audioManager) return;
+    if (isTestingMic) {
+      audioManager.stopMicTest();
+      setIsTestingMic(false);
+    } else {
+      await audioManager.startMicTest();
+      setIsTestingMic(true);
+    }
+  };
+
   const handleSave = () => {
+    if (isTestingMic && audioManager) {
+      audioManager.stopMicTest();
+      setIsTestingMic(false);
+    }
     onSaveConfig(formData);
     setShowSavedToast(true);
     setTimeout(() => {
@@ -111,7 +212,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in select-none">
-      <div className="w-full max-w-3xl bg-discord-chat rounded-xl shadow-2xl border border-discord-border flex overflow-hidden h-[580px]">
+      <div className="w-full max-w-3xl bg-discord-chat rounded-xl shadow-2xl border border-discord-border flex overflow-hidden h-[600px]">
         {/* Left Settings Sidebar Navigation */}
         <div className="w-56 bg-discord-channelList p-4 flex flex-col justify-between select-none border-r border-[#1f2023]">
           <div className="space-y-1">
@@ -140,7 +241,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }`}
             >
               <Mic size={16} className={activeTab === 'audio' ? 'text-discord-green' : ''} />
-              <span>Voz & Microfone</span>
+              <span>Voz, DSP & Teste</span>
             </button>
 
             <button
@@ -194,7 +295,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="pt-4 border-t border-[#1f2023] text-[10px] text-discord-textMuted">
-            Versão v1.0.0 • 60 FPS
+            Versão v1.0.0 • Studio DSP
           </div>
         </div>
 
@@ -204,7 +305,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="p-6 pb-2 flex items-center justify-between border-b border-[#1f2023]">
             <h2 className="text-base font-bold text-discord-textHeader">
               {activeTab === 'connection' && 'Servidor & Conexão (.env)'}
-              {activeTab === 'audio' && 'Configurações de Voz & Sensibilidade'}
+              {activeTab === 'audio' && 'Microfone, DSP Anti-Ruído & Teste de Voz'}
               {activeTab === 'loopback' && 'Prevenção de Duplicação & Cancelamento de Eco'}
               {activeTab === 'video' && 'Aceleração GPU & Protocolo Binário (0xAA)'}
               {activeTab === 'logs' && 'Logs & Diagnóstico em Tempo Real'}
@@ -254,19 +355,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </span>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-discord-textHeader mb-1">
-                    Token JWT (Opcional - Backend Aberto)
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.jwtToken}
-                    onChange={(e) => setFormData({ ...formData, jwtToken: e.target.value })}
-                    placeholder="Token JWT opcional..."
-                    className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none font-mono"
-                  />
-                </div>
-
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <div>
                     <label className="block font-semibold text-discord-textHeader mb-1">
@@ -296,9 +384,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             )}
 
-            {/* Tab 2: Audio & VAD */}
+            {/* Tab 2: Audio, DSP & Mic Test */}
             {activeTab === 'audio' && (
               <div className="space-y-4 text-xs animate-fade-in">
+                {/* Device Selector */}
                 <div>
                   <label className="block font-semibold text-discord-textHeader mb-1">
                     Dispositivo de Entrada (Microfone)
@@ -317,21 +406,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </select>
                 </div>
 
-                {/* Mic Volume Level Live Meter */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="font-semibold text-discord-textHeader">
-                      Teste de Entrada de Microfone (Live RMS)
-                    </label>
-                    <span className="text-[11px] font-mono text-discord-green">{micVolumeLevel}%</span>
-                  </div>
-                  <div className="w-full h-3 bg-[#1e1f22] rounded-full overflow-hidden p-0.5">
-                    <div
-                      className={`h-full rounded-full transition-all duration-75 ${
-                        micVolumeLevel > 30 ? 'bg-discord-green' : 'bg-discord-accent'
+                {/* Oscilloscope Waveform & Mic Loopback Test Card */}
+                <div className="p-3 bg-[#1e1f22] rounded-xl border border-discord-border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Activity size={16} className="text-discord-green" />
+                      <span className="font-bold text-discord-textHeader">Osciloscópio & Teste de Áudio</span>
+                    </div>
+
+                    <button
+                      onClick={handleToggleMicTest}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                        isTestingMic
+                          ? 'bg-discord-red hover:bg-discord-red/90 text-white animate-pulse'
+                          : 'bg-discord-accent hover:bg-discord-accentHover text-white'
                       }`}
-                      style={{ width: `${Math.min(100, micVolumeLevel)}%` }}
+                    >
+                      {isTestingMic ? <Square size={13} /> : <Headphones size={13} />}
+                      <span>{isTestingMic ? 'Parar Teste' : 'Testar Microfone (Ouvir a si mesmo)'}</span>
+                    </button>
+                  </div>
+
+                  {/* Waveform Canvas */}
+                  <div className="w-full h-16 rounded-lg overflow-hidden border border-[#2b2d31]">
+                    <canvas
+                      ref={waveCanvasRef}
+                      width={500}
+                      height={64}
+                      className="w-full h-full block bg-[#111214]"
                     />
+                  </div>
+
+                  {/* Live RMS Meter */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1 text-[11px]">
+                      <span className="text-discord-textMuted">Nível de Entrada (Live RMS)</span>
+                      <span className="font-mono text-discord-green font-bold">{micVolumeLevel}%</span>
+                    </div>
+                    <div className="relative w-full h-2.5 bg-[#111214] rounded-full overflow-hidden p-0.5 border border-[#2b2d31]">
+                      <div
+                        className={`h-full rounded-full transition-all duration-75 ${
+                          micVolumeLevel > (100 - formData.vadSensitivity) ? 'bg-discord-green shadow-sm' : 'bg-discord-accent'
+                        }`}
+                        style={{ width: `${Math.min(100, micVolumeLevel)}%` }}
+                      />
+                      {/* Threshold Marker */}
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-discord-yellow"
+                        style={{ left: `${Math.max(0, Math.min(100, 100 - formData.vadSensitivity))}%` }}
+                        title="Ponto de corte do Noise Gate"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -340,7 +465,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex justify-between items-center mb-1">
                     <label className="font-semibold text-discord-textHeader flex items-center gap-1.5">
                       <Sliders size={14} />
-                      <span>Sensibilidade de Detecção de Voz (VAD): {formData.vadSensitivity}%</span>
+                      <span>Sensibilidade do Noise Gate & VAD: {formData.vadSensitivity}%</span>
                     </label>
                   </div>
                   <input
@@ -352,8 +477,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     className="w-full accent-discord-green bg-[#1e1f22] rounded-lg cursor-pointer h-2"
                   />
                   <div className="flex justify-between text-[10px] text-discord-textMuted mt-1">
-                    <span>Mais Sensível (Capta sussurros)</span>
-                    <span>Menos Sensível (Corta ruídos)</span>
+                    <span>Corta ruídos de fundo (Ideal para teclados mecânicos)</span>
+                    <span>Capta sussurros</span>
+                  </div>
+                </div>
+
+                {/* Studio DSP Badges */}
+                <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                  <div className="p-2 bg-[#2b2d31] rounded-lg border border-[#35373c] flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-discord-green" />
+                    <div>
+                      <span className="font-semibold text-white block">Filtro Passa-Alta (85 Hz)</span>
+                      <span className="text-discord-textMuted text-[10px]">Corta vibrações e ventoinhas</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-[#2b2d31] rounded-lg border border-[#35373c] flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-discord-green" />
+                    <div>
+                      <span className="font-semibold text-white block">Compressor Studio</span>
+                      <span className="text-discord-textMuted text-[10px]">Voz nivelada sem distorção</span>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -10,9 +10,15 @@ export class AudioManager {
   private audioCtx: AudioContext | null = null;
   private micStream: MediaStream | null = null;
   private micSourceNode: MediaStreamAudioSourceNode | null = null;
-  private scriptProcessorNode: ScriptProcessorNode | null = null;
+  private highPassFilterNode: BiquadFilterNode | null = null;
+  private compressorNode: DynamicsCompressorNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private gainNode: GainNode | null = null;
+  private scriptProcessorNode: ScriptProcessorNode | null = null;
+
+  // Local Loopback Test Node (allows user to hear own voice in settings)
+  private testGainNode: GainNode | null = null;
+  private isTestingMic: boolean = false;
 
   private isMicMuted: boolean = false;
   private isDeafened: boolean = false;
@@ -29,11 +35,12 @@ export class AudioManager {
   private userVolumes: Map<string, number> = new Map(); // userId -> 0..100
   private screenAudioVolume: number = 100;
 
-  // VAD state & smoothing
+  // VAD & Noise Gate DSP state
   private vadIntervalId: any = null;
   private lastSpeakingTime: number = 0;
-  private silenceTimeoutMs: number = 350; // debounce before stopping speaking
+  private silenceTimeoutMs: number = 300; // debounce before stopping speaking
   private sequenceNumber: number = 0;
+  private noiseGateGain: number = 1.0; // Dynamic envelope for smooth gate transitions
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -41,6 +48,10 @@ export class AudioManager {
 
   public updateConfig(config: AppConfig) {
     this.config = config;
+    if (this.gainNode) {
+      // Input gain multiplier if needed
+      this.gainNode.gain.value = 1.0;
+    }
   }
 
   public setCallbacks(
@@ -77,8 +88,13 @@ export class AudioManager {
     this.screenAudioVolume = Math.max(0, Math.min(200, volume));
   }
 
+  public getAnalyser(): AnalyserNode | null {
+    return this.analyserNode;
+  }
+
   /**
-   * Initializes local microphone capture with Echo Cancellation and VAD
+   * Initializes local microphone capture with DSP Studio Pipeline:
+   * Mic -> High-Pass (85Hz) -> Studio Compressor -> Analyser -> Gain -> Noise Gate ScriptProcessor
    */
   public async startMicrophone(): Promise<void> {
     try {
@@ -94,7 +110,7 @@ export class AudioManager {
         await this.audioCtx.resume();
       }
 
-      // Constraints with robust Echo Cancellation to prevent audio loopback
+      // Constraints with robust Echo Cancellation, Noise Suppression & AGC
       const constraints: MediaStreamConstraints = {
         audio: {
           deviceId: this.config.selectedMicrophoneId ? { exact: this.config.selectedMicrophoneId } : undefined,
@@ -110,23 +126,59 @@ export class AudioManager {
       this.micSourceNode = this.audioCtx.createMediaStreamSource(this.micStream);
       logger.success('AUDIO', `Microfone ativado com sucesso (Taxa: ${this.audioCtx.sampleRate} Hz, AEC: ${this.config.echoCancellation})`);
 
-      // Analyser Node for VAD & UI meter
+      // 1. High-Pass Filter (85Hz) to remove AC, desk rumble, and fan vibrations
+      this.highPassFilterNode = this.audioCtx.createBiquadFilter();
+      this.highPassFilterNode.type = 'highpass';
+      this.highPassFilterNode.frequency.value = 85;
+      this.highPassFilterNode.Q.value = 0.7;
+
+      // 2. Broadcast Voice Dynamics Compressor (levels quiet whispers and loud screams smoothly)
+      this.compressorNode = this.audioCtx.createDynamicsCompressor();
+      this.compressorNode.threshold.value = -24; // dB
+      this.compressorNode.knee.value = 10;
+      this.compressorNode.ratio.value = 4;
+      this.compressorNode.attack.value = 0.003;
+      this.compressorNode.release.value = 0.25;
+
+      // 3. Analyser Node for VAD, Oscilloscope & Live UI meters
       this.analyserNode = this.audioCtx.createAnalyser();
       this.analyserNode.fftSize = 512;
-      this.analyserNode.smoothingTimeConstant = 0.4;
+      this.analyserNode.smoothingTimeConstant = 0.3;
 
-      // Gain Node for local mic sensitivity
+      // 4. Gain Node for Master Sensitivity
       this.gainNode = this.audioCtx.createGain();
       this.gainNode.gain.value = 1.0;
 
-      // ScriptProcessor for PCM Int16 conversion (bufferSize: 2048 samples ~46ms chunk)
+      // 5. ScriptProcessor for Noise Gate + PCM Int16 conversion (bufferSize: 2048 samples ~46ms chunk)
       this.scriptProcessorNode = this.audioCtx.createScriptProcessor(2048, 1, 1);
 
       this.scriptProcessorNode.onaudioprocess = (e) => {
         if (this.isMicMuted || !this.roomId) return;
 
         const inputBuffer = e.inputBuffer.getChannelData(0);
-        const pcmInt16 = this.float32ToInt16(inputBuffer);
+
+        // Calculate chunk RMS for Noise Gate threshold
+        let sum = 0;
+        for (let i = 0; i < inputBuffer.length; i++) {
+          sum += inputBuffer[i] * inputBuffer[i];
+        }
+        const rms = Math.sqrt(sum / inputBuffer.length);
+
+        // Noise gate cutoff threshold based on VAD sensitivity (5..95)
+        // Sensitivity 50 -> threshold ~0.02
+        const threshold = (100 - this.config.vadSensitivity) * 0.0006 + 0.005;
+
+        // Apply smooth envelope to prevent clicking on gate open/close
+        const targetGate = rms > threshold ? 1.0 : 0.0;
+        this.noiseGateGain += (targetGate - this.noiseGateGain) * 0.35;
+
+        // Apply gate attenuation
+        const processedBuffer = new Float32Array(inputBuffer.length);
+        for (let i = 0; i < inputBuffer.length; i++) {
+          processedBuffer[i] = inputBuffer[i] * this.noiseGateGain;
+        }
+
+        const pcmInt16 = this.float32ToInt16(processedBuffer);
 
         // Packetize into 50-byte binary header with type 0x05 (VOICE_AUDIO_PCM)
         const packet = encodeBinaryPacket({
@@ -140,13 +192,14 @@ export class AudioManager {
         this.onAudioPacket?.(packet);
       };
 
-      // Connect nodes: Mic -> Analyser -> Gain -> ScriptProcessor
-      // NOTE: We do NOT connect ScriptProcessor to audioCtx.destination to prevent local mic feedback (zero self-echo)
-      this.micSourceNode.connect(this.analyserNode);
+      // Connect DSP chain: Mic -> HighPass -> Compressor -> Analyser -> Gain -> ScriptProcessor
+      this.micSourceNode.connect(this.highPassFilterNode);
+      this.highPassFilterNode.connect(this.compressorNode);
+      this.compressorNode.connect(this.analyserNode);
       this.analyserNode.connect(this.gainNode);
       this.gainNode.connect(this.scriptProcessorNode);
 
-      // Dummy silence destination to keep ScriptProcessor running
+      // Dummy silence destination to keep ScriptProcessor running without local echo
       const dummyGain = this.audioCtx.createGain();
       dummyGain.gain.value = 0;
       this.scriptProcessorNode.connect(dummyGain);
@@ -186,13 +239,13 @@ export class AudioManager {
         sum += val * val;
       }
       const rms = Math.sqrt(sum / buffer.length);
-      const volumeLevel = Math.min(100, Math.round(rms * 250));
+      const volumeLevel = Math.min(100, Math.round(rms * 280));
       this.onVolumeLevel?.(volumeLevel);
 
       // Threshold based on vadSensitivity (0..100 -> ~0.01 to 0.15)
-      const threshold = 0.02 + ((100 - this.config.vadSensitivity) / 100) * 0.08;
-      const now = Date.now();
+      const threshold = (100 - this.config.vadSensitivity) * 0.001 + 0.008;
 
+      const now = performance.now();
       if (rms > threshold) {
         this.lastSpeakingTime = now;
         if (!this.isSpeaking) {
@@ -209,36 +262,59 @@ export class AudioManager {
   }
 
   /**
-   * Receives and plays remote Int16 PCM Audio packets (Voice 0x05 or Screen Audio 0x02)
+   * Start Loopback Mic Test Mode (routes mic to user's headphones in settings)
+   */
+  public async startMicTest(): Promise<void> {
+    if (!this.micStream) {
+      await this.startMicrophone();
+    }
+    if (!this.audioCtx || !this.gainNode) return;
+
+    if (!this.testGainNode) {
+      this.testGainNode = this.audioCtx.createGain();
+      this.testGainNode.gain.value = 1.0;
+    }
+
+    this.gainNode.connect(this.testGainNode);
+    this.testGainNode.connect(this.audioCtx.destination);
+    this.isTestingMic = true;
+    logger.info('AUDIO', 'Teste de microfone (loopback local) iniciado.');
+  }
+
+  /**
+   * Stop Loopback Mic Test Mode
+   */
+  public stopMicTest(): void {
+    if (this.testGainNode && this.audioCtx) {
+      try {
+        this.testGainNode.disconnect();
+      } catch (e) {}
+      this.testGainNode = null;
+    }
+    this.isTestingMic = false;
+    logger.info('AUDIO', 'Teste de microfone finalizado.');
+  }
+
+  /**
+   * Decodes incoming remote PCM audio packets with multi-voice mixer and adaptive jitter buffer
    */
   public playRemoteAudioChunk(
     packetType: PacketType,
-    payload: Uint8Array,
+    payload: ArrayBuffer,
     userId?: string
-  ): void {
-    if (this.isDeafened || !payload || payload.byteLength === 0) return;
-
-    if (!this.audioCtx) {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioCtx = new AudioCtxClass({ sampleRate: 44100 });
+  ) {
+    if (this.isDeafened || !this.audioCtx || this.audioCtx.state !== 'running') {
+      return;
     }
 
-    if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume().catch(() => {});
-    }
-
-    // Convert Int16 PCM payload to Float32
-    const int16Array = new Int16Array(
-      payload.buffer,
-      payload.byteOffset,
-      payload.byteLength / 2
-    );
+    const int16Array = new Int16Array(payload);
     const float32Array = this.int16ToFloat32(int16Array);
 
     const isScreenAudio = packetType === PacketType.SCREEN_AUDIO_PCM;
-    const isStereo = isScreenAudio && int16Array.length % 2 === 0;
-    const numChannels = isStereo ? 2 : 1;
-    const numFrames = float32Array.length / numChannels;
+    const numChannels = isScreenAudio ? 2 : 1;
+    const numFrames = isScreenAudio ? float32Array.length / 2 : float32Array.length;
+
+    if (numFrames <= 0) return;
 
     const audioBuffer = this.audioCtx.createBuffer(
       numChannels,
@@ -316,6 +392,8 @@ export class AudioManager {
    * Cleans up audio resources
    */
   public stop() {
+    this.stopMicTest();
+
     if (this.vadIntervalId) {
       clearInterval(this.vadIntervalId);
       this.vadIntervalId = null;
@@ -334,6 +412,16 @@ export class AudioManager {
     if (this.analyserNode) {
       this.analyserNode.disconnect();
       this.analyserNode = null;
+    }
+
+    if (this.highPassFilterNode) {
+      this.highPassFilterNode.disconnect();
+      this.highPassFilterNode = null;
+    }
+
+    if (this.compressorNode) {
+      this.compressorNode.disconnect();
+      this.compressorNode = null;
     }
 
     if (this.gainNode) {

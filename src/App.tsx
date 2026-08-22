@@ -821,6 +821,7 @@ export const App: React.FC = () => {
         isOpen={isSettingsModalOpen}
         config={config}
         micVolumeLevel={micVolumeLevel}
+        audioManager={audioManagerRef.current}
         onClose={() => setIsSettingsModalOpen(false)}
         onSaveConfig={handleSaveConfig}
       />
