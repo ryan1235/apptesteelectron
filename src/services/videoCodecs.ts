@@ -316,8 +316,6 @@ export class WebCodecsVideoPipeline {
     try {
       this.decoder.configure({
         codec: this.activeCodec,
-        hardwareAcceleration: 'prefer-hardware',
-        optimizeForLatency: true,
       });
       this.isDecoderConfigured = true;
       logger.info('VIDEO-GPU', `VideoDecoder configurado com codec ${this.activeCodec}`);
@@ -327,7 +325,6 @@ export class WebCodecsVideoPipeline {
         this.activeCodec = 'vp8';
         this.decoder.configure({
           codec: 'vp8',
-          optimizeForLatency: true,
         });
         this.isDecoderConfigured = true;
       } catch (e2) {
