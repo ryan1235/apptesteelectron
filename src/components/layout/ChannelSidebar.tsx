@@ -164,7 +164,7 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
                           : 'bg-[#1e1f22] text-discord-textMuted'
                       }`}
                     >
-                      {isActive ? Math.max(room.occupancy, activeRoomParticipants.length) : room.occupancy}/{room.maxParticipants}
+                      {isActive ? activeRoomParticipants.length : room.occupancy}/{room.maxParticipants}
                     </span>
                   </div>
                 </div>

@@ -546,6 +546,15 @@ export const App: React.FC = () => {
 
   const enterRoom = async (roomId: string, password?: string, preloadedDetails?: RoomDetails) => {
     try {
+      // If leaving an existing room, notify server
+      if (activeRoomRef.current && activeRoomRef.current.id !== roomId) {
+        wsClientRef.current.sendJson({
+          type: 'leave_room',
+          roomId: activeRoomRef.current.id,
+          clientUserId: config.clientUserId,
+        });
+      }
+
       let details = preloadedDetails;
       if (!details) {
         try {
