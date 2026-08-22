@@ -82,6 +82,7 @@ export interface ChatMessage {
   id: string;
   roomId: string;
   userId: string;
+  clientUserId?: string;
   userName: string;
   avatarUrl: string | null;
   content: string;
@@ -155,6 +156,15 @@ export const QUALITY_PROFILES: Record<QualityProfile, QualityProfileConfig> = {
   },
 };
 
+export interface DesktopSource {
+  id: string;
+  name: string;
+  display_id?: string;
+  thumbnailUrl?: string;
+  appIconUrl?: string | null;
+  isScreen?: boolean;
+}
+
 // ==========================================
 // Tipos de Participantes & Estado em Tempo Real
 // ==========================================
@@ -196,25 +206,27 @@ export type ClientTxMessage =
   | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile; clientUserId?: string }
   | { type: 'stop_screen_share'; roomId: string; clientUserId?: string }
   | { type: 'request_keyframe'; roomId: string }
-  | { type: 'chat_message'; roomId: string; text?: string; content?: string; clientUserId?: string }
+  | { type: 'chat_message'; roomId: string; text?: string; content?: string; clientUserId?: string; userName?: string; avatarUrl?: string | null }
   | { type: 'typing'; roomId: string; isTyping: boolean; userName?: string; clientUserId?: string }
   | { type: 'reaction'; roomId: string; emoji: string; userName?: string; clientUserId?: string }
   | { type: 'leave_room'; roomId: string; clientUserId?: string };
 
 export type ServerRxMessage =
-  | { type: 'connected'; userId: string; userName: string }
-  | { type: 'room_state'; room?: Partial<RoomDetails>; participants: Participant[]; activePresenter?: PresenterInfo | null; activeScreenShare?: any; yourUserId?: string }
-  | { type: 'user_joined'; user?: Participant; participant?: Participant }
-  | { type: 'user_left'; userId: string }
-  | { type: 'screen_share_started'; presenterId?: string; userId?: string; name?: string; presenterName?: string; qualityProfile: QualityProfile }
+  | { type: 'connected'; userId?: string; userName?: string; clientUserId?: string }
+  | { type: 'room_state'; roomId?: string; title?: string; isPasswordProtected?: boolean; maxParticipants?: number; room?: Partial<RoomDetails>; participants?: Participant[]; activePresenter?: PresenterInfo | null; activeScreenShare?: any; yourUserId?: string; yourClientUserId?: string; messages?: ChatMessage[] }
+  | { type: 'user_joined'; user?: any; participant?: any; userId?: string; userName?: string; clientUserId?: string; avatarUrl?: string | null; micOn?: boolean; isSpeaking?: boolean; isSharing?: boolean; isScreenSharing?: boolean }
+  | { type: 'user_left'; userId?: string; userName?: string; clientUserId?: string; user?: any }
+  | { type: 'screen_share_started'; presenterId?: string; userId?: string; name?: string; presenterName?: string; userName?: string; qualityProfile?: QualityProfile }
   | { type: 'screen_share_stopped'; presenterId?: string; userId?: string }
-  | { type: 'mic_updated'; userId: string; micOn: boolean }
-  | { type: 'speaking_updated'; userId: string; isSpeaking: boolean }
-  | { type: 'chat_message'; message?: ChatMessage; id?: string; roomId?: string; userId?: string; userName?: string; avatarUrl?: string | null; content?: string; text?: string; createdAt?: string }
-  | { type: 'typing'; userId?: string; userName?: string; isTyping?: boolean }
-  | { type: 'reaction'; emoji?: string; userName?: string; userId?: string }
-  | { type: 'request_keyframe'; roomId?: string }
+  | { type: 'mic_updated'; userId?: string; userName?: string; micOn?: boolean; user?: any }
+  | { type: 'mic_toggled'; userId?: string; userName?: string; micOn?: boolean; user?: any }
+  | { type: 'speaking_updated'; userId?: string; userName?: string; isSpeaking?: boolean; user?: any }
+  | { type: 'chat_message'; message?: ChatMessage; id?: string; roomId?: string; userId?: string; clientUserId?: string; userName?: string; name?: string; avatarUrl?: string | null; content?: string; text?: string; createdAt?: string }
+  | { type: 'typing'; userId?: string; clientUserId?: string; userName?: string; isTyping?: boolean }
+  | { type: 'reaction'; emoji?: string; userName?: string; userId?: string; clientUserId?: string }
+  | { type: 'request_keyframe'; roomId?: string; requestedBy?: string }
   | { type: 'room_closed'; roomId: string; reason?: string }
+  | { type: 'error'; error?: string; message?: string }
   | { type: 'auth_required'; error?: string };
 
 // ==========================================

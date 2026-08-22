@@ -8,9 +8,33 @@
     "dev": "vite",
     "build": "tsc && vite build && tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\"",
     "electron:dev": "node scripts/dev.js",
-    "electron:build": "npm run build && electron-builder",
+    "electron:build": "npm run build && electron-builder --win",
     "start": "node scripts/dev.js",
     "test:protocol": "tsx src/tests/binaryProtocol.test.ts"
+  },
+  "build": {
+    "appId": "com.archpixel.discordliverooms",
+    "productName": "Discord Live Rooms",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        "dir",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Discord Live Rooms"
+    }
   },
   "dependencies": {
     "clsx": "^2.1.1",

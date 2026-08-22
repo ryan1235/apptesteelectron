@@ -13,6 +13,8 @@ import {
   LiveGroup,
   CreateGroupPayload,
   FloatingReaction,
+  ServerRxMessage,
+  BinaryHeader,
 } from './types/live-room';
 import { loadSavedConfig, saveConfig } from './config/env';
 import { LiveRoomsApiClient } from './services/api';
@@ -129,51 +131,60 @@ export const App: React.FC = () => {
       video.setTargetCanvas(canvasRef.current);
     }
 
-    // Bind Audio Voice Activity (VAD)
-    audio.onSpeakingChange = (speaking) => {
-      setIsSpeaking(speaking);
-      if (activeRoomRef.current) {
-        ws.sendJson({
-          type: 'user_speaking',
-          roomId: activeRoomRef.current.id,
-          isSpeaking: speaking,
-          clientUserId: configRef.current.clientUserId,
-        });
+    // Bind Audio Voice Activity & Packet callbacks
+    audio.setCallbacks(
+      (audioPacket: ArrayBuffer) => {
+        if (activeRoomRef.current) {
+          ws.sendBinary(audioPacket);
+        }
+      },
+      (speaking: boolean) => {
+        setIsSpeaking(speaking);
+        if (activeRoomRef.current) {
+          ws.sendJson({
+            type: 'user_speaking',
+            roomId: activeRoomRef.current.id,
+            isSpeaking: speaking,
+            clientUserId: configRef.current.clientUserId,
+          });
+        }
+      },
+      (vol: number) => {
+        setMicVolumeLevel(vol);
       }
-    };
-
-    audio.onVolumeChange = (vol) => {
-      setMicVolumeLevel(vol);
-    };
+    );
 
     // Bind WebCodecs Encoded Video Frame Emitter -> Send via WebSocket
-    video.onEncodedFrame = (headerBytes, payloadBytes) => {
+    video.setOnVideoPacket((packet: ArrayBuffer) => {
       if (activeRoomRef.current) {
-        ws.sendBinary(headerBytes, payloadBytes);
+        ws.sendBinary(packet);
       }
-    };
+    });
+
+    video.setOnTelemetryUpdate((tStats) => {
+      setTelemetry((prev) => ({
+        ...prev,
+        fps: tStats.fps,
+        bitrateKbps: tStats.bitrateKbps,
+        codec: tStats.codec,
+      }));
+    });
 
     // Bind WebSocket Handlers
-    ws.onStatusChange = (status) => {
-      setConnectionStatus(status);
-    };
-
-    ws.onJsonMessage = (msg) => {
-      handleServerRxJson(msg);
-    };
-
-    ws.onBinaryMessage = (header, payload) => {
-      switch (header.packetType) {
-        case PacketType.VIDEO_GPU:
-          video.decodeFrame(header, payload);
-          break;
-
-        case PacketType.VOICE_AUDIO_PCM:
-        case PacketType.SCREEN_AUDIO_PCM:
-          audio.handleIncomingAudio(header, payload);
-          break;
-      }
-    };
+    ws.setCallbacks({
+      onJsonMessage: (msg: ServerRxMessage) => {
+        handleServerRxJson(msg);
+      },
+      onBinaryVideo: (header: BinaryHeader) => {
+        video.handleIncomingVideoPacket(header.payload, header.isKeyframe, header.timestampUs);
+      },
+      onBinaryAudio: (packetType: PacketType, payload: ArrayBuffer, senderId?: string) => {
+        audio.playRemoteAudioChunk(packetType, payload, senderId);
+      },
+      onConnectionStatus: (status) => {
+        setConnectionStatus(status);
+      },
+    });
 
     // Connect WebSocket
     ws.connect();
@@ -188,26 +199,8 @@ export const App: React.FC = () => {
       }
     }, 10000);
 
-    // Setup periodic Telemetry stats update
-    const statsInterval = setInterval(() => {
-      const vStats = video.getStats();
-      const wsStats = ws.getStats();
-      setTelemetry({
-        fps: vStats.fps,
-        bitrateKbps: Math.round(vStats.bitrateBps / 1000),
-        latencyMs: vStats.latencyMs,
-        packetsReceived: wsStats.packetsReceived,
-        packetsSent: wsStats.packetsSent,
-        bytesReceived: wsStats.bytesReceived,
-        bytesSent: wsStats.bytesSent,
-        audioJitterMs: 5,
-        codec: 'H.264 GPU (0xAA)',
-      });
-    }, 1000);
-
     return () => {
       clearInterval(pollInterval);
-      clearInterval(statsInterval);
       ws.disconnect();
       audio.stop();
       video.destroy();

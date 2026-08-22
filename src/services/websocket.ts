@@ -105,7 +105,12 @@ export class LiveRoomWebSocketClient {
             binaryPacket.packetType === PacketType.VOICE_AUDIO_PCM ||
             binaryPacket.packetType === PacketType.SCREEN_AUDIO_PCM
           ) {
-            this.onBinaryAudio?.(binaryPacket.packetType, binaryPacket.payload);
+            const rawPayload = binaryPacket.payload;
+            const audioBuffer = rawPayload.buffer.slice(
+              rawPayload.byteOffset,
+              rawPayload.byteOffset + rawPayload.byteLength
+            ) as ArrayBuffer;
+            this.onBinaryAudio?.(binaryPacket.packetType, audioBuffer);
           }
         }
       };
@@ -150,10 +155,11 @@ export class LiveRoomWebSocketClient {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         // Envia pacote binário 50-byte de telemetria/ping (0x03) para manter o WebSocket ativo no proxy sem desconectar
         const packet = encodeBinaryPacket({
-          packetType: PacketType.TELEMETRY,
+          packetType: PacketType.TELEMETRY_PING,
           roomId: this.currentRoomId || '00000000-0000-0000-0000-000000000000',
           timestampUs: performance.now() * 1000,
           sequenceNumber: 0,
+          payload: new Uint8Array(0),
         });
         this.ws.send(packet);
       }

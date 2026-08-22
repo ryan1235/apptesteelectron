@@ -186,7 +186,7 @@ export class AudioManager {
           roomId: this.roomId,
           timestampUs: performance.now() * 1000,
           sequenceNumber: (this.sequenceNumber++) & 0xFFFFFF,
-          payload: pcmInt16.buffer,
+          payload: new Uint8Array(pcmInt16.buffer),
         });
 
         this.onAudioPacket?.(packet);
@@ -323,7 +323,7 @@ export class AudioManager {
     );
 
     if (numChannels === 1) {
-      audioBuffer.copyToChannel(float32Array, 0);
+      audioBuffer.copyToChannel(float32Array as any, 0);
     } else {
       // De-interleave stereo
       const left = new Float32Array(numFrames);
@@ -332,8 +332,8 @@ export class AudioManager {
         left[i] = float32Array[i * 2];
         right[i] = float32Array[i * 2 + 1];
       }
-      audioBuffer.copyToChannel(left, 0);
-      audioBuffer.copyToChannel(right, 1);
+      audioBuffer.copyToChannel(left as any, 0);
+      audioBuffer.copyToChannel(right as any, 1);
     }
 
     // Create BufferSourceNode

@@ -163,7 +163,9 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
 
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           {room.isPasswordProtected && (
-                            <Lock size={12} className="text-discord-yellow" title="Protegida por senha" />
+                            <span title="Protegida por senha">
+                              <Lock size={12} className="text-discord-yellow" />
+                            </span>
                           )}
                           <span
                             className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-medium ${
