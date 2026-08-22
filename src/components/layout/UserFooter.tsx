@@ -39,9 +39,9 @@ export const UserFooter: React.FC<UserFooterProps> = ({
             }`}
           >
             {avatarUrl ? (
-              <img src={avatarUrl} alt={userName} className="w-full h-full object-cover" />
+              <img src={avatarUrl} alt={userName || ''} className="w-full h-full object-cover" />
             ) : (
-              userName.substring(0, 2).toUpperCase()
+              (userName || 'Você').substring(0, 2).toUpperCase()
             )}
           </div>
           {/* Status Dot */}

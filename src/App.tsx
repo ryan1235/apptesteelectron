@@ -244,16 +244,23 @@ export const App: React.FC = () => {
           }
           if (Array.isArray(msg.participants)) {
             setParticipants(
-              msg.participants.map((p: any) => ({
-                id: p.userId || p.id || 'usr-' + Math.random().toString(36).substring(2, 7),
-                name: p.name || p.userName || 'Participante',
-                avatarUrl: p.avatarUrl || null,
-                micOn: Boolean(p.micOn),
-                isSpeaking: Boolean(p.isSpeaking),
-                isScreenSharing: Boolean(p.isSharing || p.isScreenSharing || p.isPresenter),
-                isHost: Boolean(p.isHost),
-                volume: p.volume ?? 100,
-              }))
+              msg.participants.map((p: any) => {
+                const isMe =
+                  p.userId === msg.yourUserId ||
+                  p.id === msg.yourUserId ||
+                  (p.name && p.name.toLowerCase() === configRef.current.userName.toLowerCase());
+
+                return {
+                  id: p.userId || p.id || 'usr-' + Math.random().toString(36).substring(2, 7),
+                  name: p.name || p.userName || 'Participante',
+                  avatarUrl: p.avatarUrl || null,
+                  micOn: isMe ? !isMicMuted : Boolean(p.micOn),
+                  isSpeaking: Boolean(p.isSpeaking),
+                  isScreenSharing: Boolean(p.isSharing || p.isScreenSharing || p.isPresenter),
+                  isHost: Boolean(p.isHost),
+                  volume: p.volume ?? 100,
+                };
+              })
             );
           }
           if (msg.activeScreenShare) {
@@ -486,6 +493,13 @@ export const App: React.FC = () => {
         password,
         userName: config.userName,
         avatarUrl: config.avatarUrl || null,
+      });
+
+      // Synchronize mic state to server
+      wsClientRef.current.sendJson({
+        type: 'toggle_mic',
+        roomId,
+        micOn: !isMicMuted,
       });
     } catch (err: any) {
       console.error('Erro ao conectar na sala:', err);
