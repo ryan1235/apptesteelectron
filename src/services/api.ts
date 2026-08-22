@@ -42,14 +42,14 @@ export class LiveRoomsApiClient {
    * Listar Salas Ao Vivo
    * GET /live-rooms
    */
-  public async getLiveRooms(groupId?: string): Promise<RoomSummary[]> {
+  public async getLiveRooms(groupId?: string, clientUserId?: string): Promise<RoomSummary[]> {
     try {
       const url = new URL(`${this.config.apiUrl}/live-rooms`);
       if (groupId) {
         url.searchParams.set('groupId', groupId);
       }
-      if (this.config.clientUserId) {
-        url.searchParams.set('clientUserId', this.config.clientUserId);
+      if (clientUserId) {
+        url.searchParams.set('clientUserId', clientUserId);
       }
 
       const res = await fetch(url.toString(), {
@@ -175,8 +175,8 @@ export class LiveRoomsApiClient {
   public async getGroups(params?: { clientUserId?: string; customGroupId?: string }): Promise<LiveGroup[]> {
     try {
       const url = new URL(`${this.config.apiUrl}/live-groups`);
-      if (params?.clientUserId || this.config.clientUserId) {
-        url.searchParams.set('clientUserId', params?.clientUserId || this.config.clientUserId);
+      if (params?.clientUserId) {
+        url.searchParams.set('clientUserId', params.clientUserId);
       }
       if (params?.customGroupId) {
         url.searchParams.set('customGroupId', params.customGroupId);
