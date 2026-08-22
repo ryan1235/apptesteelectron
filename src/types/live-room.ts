@@ -165,6 +165,8 @@ export interface DesktopSource {
   isScreen?: boolean;
 }
 
+export type ScreenAudioMode = 'app_only' | 'desktop_loopback' | 'none';
+
 // ==========================================
 // Tipos de Participantes & Estado em Tempo Real
 // ==========================================

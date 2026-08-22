@@ -4,15 +4,18 @@ import {
   Monitor,
   AppWindow,
   Volume2,
+  VolumeX,
   Sparkles,
   ShieldCheck,
   Check,
   RefreshCw,
+  Sliders,
 } from 'lucide-react';
 import {
   DesktopSource,
   QualityProfile,
   QUALITY_PROFILES,
+  ScreenAudioMode,
 } from '../../types/live-room';
 
 interface ScreenSourceModalProps {
@@ -21,7 +24,7 @@ interface ScreenSourceModalProps {
   onStartShare: (
     sourceId: string,
     profile: QualityProfile,
-    captureAudio: boolean
+    audioMode: ScreenAudioMode
   ) => void;
   getSources: () => Promise<DesktopSource[]>;
 }
@@ -36,7 +39,7 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
   const [activeTab, setActiveTab] = useState<'screens' | 'windows'>('screens');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<QualityProfile>('SMOOTH_60FPS');
-  const [captureAudio, setCaptureAudio] = useState<boolean>(true);
+  const [audioMode, setAudioMode] = useState<ScreenAudioMode>('app_only');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const loadSources = async () => {
@@ -76,7 +79,7 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
 
   const handleConfirm = () => {
     if (!selectedSourceId) return;
-    onStartShare(selectedSourceId, selectedProfile, captureAudio);
+    onStartShare(selectedSourceId, selectedProfile, audioMode);
     onClose();
   };
 
@@ -141,7 +144,7 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
         </div>
 
         {/* Source Cards Grid */}
-        <div className="p-6 overflow-y-auto min-h-[220px] max-h-[340px] bg-[#232428]/50">
+        <div className="p-6 overflow-y-auto min-h-[200px] max-h-[300px] bg-[#232428]/50">
           {isLoading && sources.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-discord-textMuted text-xs gap-2">
               <RefreshCw size={24} className="animate-spin text-discord-accent" />
@@ -208,14 +211,14 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
           )}
         </div>
 
-        {/* Quality Profile & Audio Options */}
+        {/* Quality Profile & Audio Mode Selection */}
         <div className="p-6 py-4 bg-[#2b2d31] border-t border-[#1f2023] space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Quality Profile */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-discord-textMuted mb-1.5 flex items-center gap-1">
                 <Sparkles size={12} className="text-discord-yellow" />
-                <span>Perfil de Transmissão (GPU)</span>
+                <span>Qualidade do Vídeo (GPU)</span>
               </label>
               <select
                 value={selectedProfile}
@@ -230,28 +233,32 @@ export const ScreenSourceModal: React.FC<ScreenSourceModalProps> = ({
               </select>
             </div>
 
-            {/* System Audio & Anti-Loopback */}
+            {/* Audio Mode Selector */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-discord-textMuted mb-1.5 flex items-center gap-1">
                 <Volume2 size={12} className="text-discord-green" />
-                <span>Áudio do Sistema</span>
+                <span>Transmissão de Áudio</span>
               </label>
-              <div
-                onClick={() => setCaptureAudio(!captureAudio)}
-                className="flex items-center justify-between p-2 bg-[#1e1f22] rounded cursor-pointer hover:bg-[#25272b] transition-colors"
+              <select
+                value={audioMode}
+                onChange={(e) => setAudioMode(e.target.value as ScreenAudioMode)}
+                className="w-full bg-[#1e1f22] text-xs text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none cursor-pointer"
               >
-                <div className="flex items-center gap-1.5">
-                  <ShieldCheck size={14} className="text-discord-accent" />
-                  <span className="text-xs text-discord-textNormal font-medium">Anti-Loopback Ativo (Zero Eco)</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={captureAudio}
-                  onChange={(e) => setCaptureAudio(e.target.checked)}
-                  className="w-4 h-4 accent-discord-accent cursor-pointer"
-                />
-              </div>
+                <option value="app_only">Apenas o Áudio do Aplicativo (Recomendado)</option>
+                <option value="desktop_loopback">Áudio Completo do PC (Todo o Sistema)</option>
+                <option value="none">Sem Áudio (Apenas Vídeo)</option>
+              </select>
             </div>
+          </div>
+
+          {/* Audio Mode Explanation / Tip */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-[#1e1f22]/60 rounded text-[11px] text-discord-textMuted border border-[#2e3035]">
+            <ShieldCheck size={14} className="text-discord-accent flex-shrink-0" />
+            <span>
+              {audioMode === 'app_only' && 'Transmite apenas o som da janela escolhida sem eco ou vazamento de chamadas externas.'}
+              {audioMode === 'desktop_loopback' && 'Transmite todos os sons do Windows (jogos, música e navegadores) em estéreo 44.1kHz.'}
+              {audioMode === 'none' && 'Transmite apenas o fluxo de imagem em alta taxa de quadros sem áudio.'}
+            </span>
           </div>
 
           {/* Action Buttons */}

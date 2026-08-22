@@ -15,6 +15,7 @@ import {
   FloatingReaction,
   ServerRxMessage,
   BinaryHeader,
+  ScreenAudioMode,
 } from './types/live-room';
 import { loadSavedConfig, saveConfig } from './config/env';
 import { LiveRoomsApiClient } from './services/api';
@@ -339,26 +340,6 @@ export const App: React.FC = () => {
           } else {
             setActivePresenter(null);
           }
-
-          // If local user is already sharing their screen, resume stream transmission for the newly confirmed room
-          if (isScreenSharingRef.current && localScreenStreamRef.current && msg.roomId) {
-            try {
-              videoCodecsRef.current.stopEncoding();
-              videoCodecsRef.current.startEncoding(
-                localScreenStreamRef.current,
-                msg.roomId,
-                activeProfileRef.current
-              );
-              wsClientRef.current.sendJson({
-                type: 'start_screen_share',
-                roomId: msg.roomId,
-                qualityProfile: activeProfileRef.current,
-                clientUserId: configRef.current.clientUserId,
-              });
-            } catch (err) {
-              console.warn('Erro ao continuar compartilhamento de tela na sala:', err);
-            }
-          }
           break;
         }
 
@@ -424,9 +405,7 @@ export const App: React.FC = () => {
                 (p) => p.id !== leftId && (!leftName || p.name.toLowerCase() !== leftName.toLowerCase())
               )
             );
-          }
-          if (activePresenter?.userId === leftId) {
-            setActivePresenter(null);
+            setActivePresenter((prev) => (prev?.userId === leftId ? null : prev));
           }
           break;
         }
@@ -457,9 +436,7 @@ export const App: React.FC = () => {
 
         case 'screen_share_stopped': {
           const presenterId = msg.userId || msg.presenterId;
-          if (activePresenter?.userId === presenterId) {
-            setActivePresenter(null);
-          }
+          setActivePresenter((prev) => (prev?.userId === presenterId ? null : prev));
           setParticipants((prev) =>
             prev.map((p) => (p.id === presenterId ? { ...p, isScreenSharing: false } : p))
           );
@@ -607,14 +584,17 @@ export const App: React.FC = () => {
 
   const enterRoom = async (roomId: string, password?: string, preloadedDetails?: RoomDetails) => {
     try {
-      // If leaving an existing room, notify server
+      // If leaving an existing room, notify server and clean state
       if (activeRoomRef.current && activeRoomRef.current.id !== roomId) {
+        soundEffects.playLeave();
         wsClientRef.current.sendJson({
           type: 'leave_room',
           roomId: activeRoomRef.current.id,
           clientUserId: config.clientUserId,
         });
+        stopScreenShare();
       }
+      setActivePresenter(null);
 
       let details = preloadedDetails;
       if (!details) {
@@ -812,13 +792,13 @@ export const App: React.FC = () => {
   const startScreenShare = async (
     sourceId: string,
     profile: QualityProfile = activeProfile,
-    captureAudio: boolean = true
+    audioMode: ScreenAudioMode = 'app_only'
   ) => {
     try {
       const captureResult = await screenCapturerRef.current.startCapture(
         sourceId,
         profile,
-        captureAudio
+        audioMode
       );
       const stream = captureResult.stream;
       setLocalScreenStream(stream);
@@ -833,8 +813,8 @@ export const App: React.FC = () => {
           profile
         );
 
-        // Start Stereo Screen Audio Capture & Streaming
-        if (captureResult.hasAudio || stream.getAudioTracks().length > 0) {
+        // Start Stereo Screen Audio Capture & Streaming (only if audio is enabled)
+        if (audioMode !== 'none' && (captureResult.hasAudio || stream.getAudioTracks().length > 0)) {
           await audioManagerRef.current.startScreenAudioCapture(stream);
         }
 

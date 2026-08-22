@@ -159,32 +159,10 @@ export class AudioManager {
       this.scriptProcessorNode = this.audioCtx.createScriptProcessor(2048, 1, 1);
 
       this.scriptProcessorNode.onaudioprocess = (audioProcessingEvent) => {
-        if (!this.roomId || this.isMicMuted) return;
+        if (!this.roomId || this.isMicMuted || !this.onAudioPacket) return;
 
         const inputBuffer = audioProcessingEvent.inputBuffer.getChannelData(0);
-
-        // Calculate chunk RMS for Noise Gate threshold
-        let sum = 0;
-        for (let i = 0; i < inputBuffer.length; i++) {
-          sum += inputBuffer[i] * inputBuffer[i];
-        }
-        const rms = Math.sqrt(sum / inputBuffer.length);
-
-        // Noise gate cutoff threshold based on VAD sensitivity (5..95)
-        // Sensitivity 50 -> threshold ~0.02
-        const threshold = (100 - this.config.vadSensitivity) * 0.0006 + 0.005;
-
-        // Apply smooth envelope to prevent clicking on gate open/close
-        const targetGate = rms > threshold ? 1.0 : 0.0;
-        this.noiseGateGain += (targetGate - this.noiseGateGain) * 0.35;
-
-        // Apply gate attenuation
-        const processedBuffer = new Float32Array(inputBuffer.length);
-        for (let i = 0; i < inputBuffer.length; i++) {
-          processedBuffer[i] = inputBuffer[i] * this.noiseGateGain;
-        }
-
-        const pcmInt16 = this.float32ToInt16(processedBuffer);
+        const pcmInt16 = this.float32ToInt16(inputBuffer);
 
         // Packetize into 50-byte binary header with type 0x05 (VOICE_AUDIO_PCM)
         const packet = encodeBinaryPacket({
@@ -195,7 +173,7 @@ export class AudioManager {
           payload: new Uint8Array(pcmInt16.buffer),
         });
 
-        this.onAudioPacket?.(packet);
+        this.onAudioPacket(packet);
       };
 
       // Connect DSP chain: Mic -> HighPass -> Compressor -> Analyser -> Gain -> ScriptProcessor
@@ -399,8 +377,20 @@ export class AudioManager {
     payload: ArrayBuffer,
     userId?: string
   ) {
-    if (this.isDeafened || !this.audioCtx || this.audioCtx.state !== 'running') {
+    if (this.isDeafened) {
       return;
+    }
+
+    if (!this.audioCtx) {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioCtx = new AudioCtxClass({
+        sampleRate: 44100,
+        latencyHint: 'interactive',
+      });
+    }
+
+    if (this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume().catch(() => {});
     }
 
     const int16Array = new Int16Array(payload);
@@ -451,8 +441,9 @@ export class AudioManager {
     const currentTime = this.audioCtx.currentTime;
     let streamNextTime = this.userPlayTimes.get(streamKey) ?? 0;
 
-    if (streamNextTime < currentTime) {
-      streamNextTime = currentTime + 0.015; // 15ms adaptive jitter safety buffer
+    // Clamp latency if behind or if drifted ahead by more than 80ms
+    if (streamNextTime < currentTime || streamNextTime > currentTime + 0.08) {
+      streamNextTime = currentTime + 0.01; // Real-time 10ms target
     }
 
     sourceNode.start(streamNextTime);

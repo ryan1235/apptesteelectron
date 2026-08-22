@@ -1,4 +1,4 @@
-import { QualityProfile, QUALITY_PROFILES, DesktopSource } from '../types/live-room';
+import { QualityProfile, QUALITY_PROFILES, DesktopSource, ScreenAudioMode } from '../types/live-room';
 
 export interface ScreenCaptureResult {
   stream: MediaStream;
@@ -49,18 +49,20 @@ export class ScreenCapturer {
   public async startCapture(
     sourceId: string,
     profile: QualityProfile = 'SMOOTH_60FPS',
-    captureAudio: boolean = true
+    audioMode: ScreenAudioMode | boolean = 'app_only'
   ): Promise<ScreenCaptureResult> {
     const config = QUALITY_PROFILES[profile];
+    const isAudioEnabled = audioMode !== 'none' && audioMode !== false;
+    const isDesktopLoopback = audioMode === 'desktop_loopback' || sourceId.startsWith('screen:');
 
     // If running in Electron with desktopCapturer source ID
     if (window.electronAPI && sourceId) {
       const constraints: any = {
-        audio: captureAudio
+        audio: isAudioEnabled
           ? {
               mandatory: {
                 chromeMediaSource: 'desktop',
-                chromeMediaSourceId: sourceId,
+                ...(isDesktopLoopback ? {} : { chromeMediaSourceId: sourceId }),
               },
             }
           : false,
@@ -82,8 +84,8 @@ export class ScreenCapturer {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         this.activeStream = stream;
 
-        // If audio was requested but no track was attached directly by window capture, try desktop audio loopback
-        if (captureAudio && stream.getAudioTracks().length === 0) {
+        // If loopback audio was explicitly requested and no audio was attached, capture system desktop audio
+        if (isAudioEnabled && isDesktopLoopback && stream.getAudioTracks().length === 0) {
           try {
             const audioStream = await navigator.mediaDevices.getUserMedia({
               audio: {
@@ -119,7 +121,7 @@ export class ScreenCapturer {
         height: { ideal: config.height, max: config.height },
         frameRate: { ideal: config.fps, max: config.fps },
       },
-      audio: captureAudio,
+      audio: isAudioEnabled,
     });
 
     this.activeStream = displayStream;
