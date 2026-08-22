@@ -99,6 +99,7 @@ export const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isScreenSourceModalOpen, setIsScreenSourceModalOpen] = useState<boolean>(false);
   const [screenAudioVolume, setScreenAudioVolume] = useState<number>(100);
+  const [myActivity, setMyActivity] = useState<string>('');
 
   // Service Instances (Refs to preserve across renders)
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -269,6 +270,36 @@ export const App: React.FC = () => {
     // Connect WebSocket
     ws.connect();
 
+    // Bind Global Hotkeys from Electron
+    const unsubGlobalMic = window.electronAPI?.onGlobalToggleMic?.(() => {
+      handleToggleMic();
+    });
+    const unsubGlobalDeafen = window.electronAPI?.onGlobalToggleDeafen?.(() => {
+      handleToggleDeafen();
+    });
+    const unsubGlobalScreen = window.electronAPI?.onGlobalToggleScreen?.(() => {
+      handleToggleScreenShare();
+    });
+    const unsubGameActivity = window.electronAPI?.onGameActivityDetected?.((game) => {
+      const actText = game ? `Jogando ${game}` : '';
+      setParticipants((prev) =>
+        prev.map((p) =>
+          p.id === currentUserIdRef.current || p.clientUserId === configRef.current.clientUserId
+            ? { ...p, activity: actText || undefined }
+            : p
+        )
+      );
+      if (activeRoomRef.current && actText) {
+        ws.sendJson({
+          type: 'user_activity',
+          roomId: activeRoomRef.current.id,
+          activity: actText,
+          clientUserId: configRef.current.clientUserId,
+          userName: configRef.current.userName,
+        });
+      }
+    });
+
     // Fetch rooms and groups
     fetchRooms();
 
@@ -282,11 +313,43 @@ export const App: React.FC = () => {
     return () => {
       clearInterval(pollInterval);
       unsubscribeNativeAudio?.();
+      unsubGlobalMic?.();
+      unsubGlobalDeafen?.();
+      unsubGlobalScreen?.();
+      unsubGameActivity?.();
       ws.disconnect();
       audio.stop();
       video.destroy();
     };
   }, []);
+
+  // Synchronize In-Game Overlay state in real time
+  useEffect(() => {
+    if (window.electronAPI?.updateOverlayState) {
+      window.electronAPI.updateOverlayState({
+        activeRoomTitle: activeRoom?.title,
+        participants: participants.map((p) => ({
+          id: p.id,
+          name: p.name,
+          avatarUrl: p.avatarUrl,
+          isSpeaking: p.isSpeaking,
+          micOn: p.micOn,
+          isDeafened: isDeafened && (p.id === currentUserId || p.clientUserId === config.clientUserId),
+          activity: p.activity,
+        })),
+        recentMessages: messages.slice(-5).map((m) => ({
+          id: m.id || `msg-${Math.random()}`,
+          userName: m.userName,
+          content: m.content,
+          avatarUrl: m.avatarUrl,
+          timestamp: new Date(m.createdAt).getTime() || Date.now(),
+        })),
+        isLocked: true,
+        myMicOn: !isMicMuted,
+        myDeafened: isDeafened,
+      });
+    }
+  }, [activeRoom, participants, messages, isMicMuted, isDeafened]);
 
   // Update canvas target when entering room
   useEffect(() => {
@@ -548,6 +611,25 @@ export const App: React.FC = () => {
               return matches
                 ? { ...p, isSpeaking, ...(isSpeaking ? { micOn: true } : {}) }
                 : p;
+            })
+          );
+          break;
+        }
+
+        case 'user_activity': {
+          const actUserId = msg.userId || msg.clientUserId;
+          const actUserName = msg.userName;
+          const actText = msg.activity;
+
+          setParticipants((prev) =>
+            prev.map((p) => {
+              if (
+                (actUserId && (p.id === actUserId || p.clientUserId === actUserId)) ||
+                (actUserName && p.name.toLowerCase() === actUserName.toLowerCase())
+              ) {
+                return { ...p, activity: actText };
+              }
+              return p;
             })
           );
           break;
@@ -1098,10 +1180,12 @@ export const App: React.FC = () => {
           isMicMuted={isMicMuted}
           isDeafened={isDeafened}
           isSpeaking={isSpeaking}
+          activity={myActivity}
           onToggleMic={handleToggleMic}
           onToggleDeafen={handleToggleDeafen}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onOpenLogin={() => setIsLoginModalOpen(true)}
+          onToggleOverlay={() => window.electronAPI?.toggleOverlay?.()}
         />
 
         {/* Center Main Stage / Lobby */}

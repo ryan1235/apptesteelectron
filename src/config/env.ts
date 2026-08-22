@@ -41,12 +41,15 @@ export function getDefaultConfig(): AppConfig {
     avatarUrl: env.VITE_DEFAULT_AVATAR_URL || '',
     echoCancellation: env.VITE_AUDIO_ECHO_CANCELLATION !== 'false',
     noiseSuppression: env.VITE_AUDIO_NOISE_SUPPRESSION !== 'false',
+    rnnoiseSuppression: true,
     autoGainControl: env.VITE_AUDIO_AUTO_GAIN_CONTROL !== 'false',
     autoSensitivity: true,
     inputVolume: 100,
     outputVolume: 100,
     preventScreenAudioLoopback: env.VITE_SCREEN_AUDIO_LOOPBACK_PREVENTION !== 'false',
     vadSensitivity: 40,
+    enableInGameOverlay: true,
+    overlayPosition: 'top-left',
     mockMode: false,
   };
 }

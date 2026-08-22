@@ -1,6 +1,7 @@
+export const BINARY_MAGIC_BYTE = 0xAA;
+export const HEADER_SIZE = 50;
+
 import {
-  BINARY_MAGIC_BYTE,
-  HEADER_SIZE,
   PacketType,
   BinaryHeader,
 } from '../types/live-room';

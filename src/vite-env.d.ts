@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+import { OverlayState } from './types/live-room';
+
 export interface DesktopSource {
   id: string;
   name: string;
@@ -19,6 +21,21 @@ export interface ElectronAPI {
   closeWindow: () => void;
   isMaximized: () => Promise<boolean>;
   onWindowStateChanged: (callback: (state: { isMaximized: boolean }) => void) => () => void;
+
+  // In-Game Overlay
+  updateOverlayState: (state: OverlayState) => void;
+  onOverlayStateUpdated: (callback: (state: OverlayState) => void) => () => void;
+  setOverlayIgnoreMouse: (ignore: boolean) => void;
+  toggleOverlay: () => void;
+
+  // Global Shortcuts
+  onGlobalToggleMic: (callback: () => void) => () => void;
+  onGlobalToggleDeafen: (callback: () => void) => () => void;
+  onGlobalToggleOverlay: (callback: () => void) => () => void;
+  onGlobalToggleScreen: (callback: () => void) => () => void;
+
+  // Game Activity
+  onGameActivityDetected: (callback: (activity: string | null) => void) => () => void;
 }
 
 declare global {

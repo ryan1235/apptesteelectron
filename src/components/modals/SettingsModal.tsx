@@ -20,6 +20,8 @@ import {
   Square,
   Activity,
   Headphones,
+  Gamepad2,
+  Keyboard,
 } from 'lucide-react';
 import { AppConfig } from '../../types/live-room';
 import { logger, LogEntry, LogCategory } from '../../services/logger';
@@ -34,7 +36,7 @@ interface SettingsModalProps {
   onSaveConfig: (config: AppConfig) => void;
 }
 
-type TabType = 'connection' | 'audio' | 'loopback' | 'video' | 'logs';
+type TabType = 'connection' | 'audio' | 'overlay' | 'loopback' | 'video' | 'logs';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -245,6 +247,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('overlay')}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
+                activeTab === 'overlay'
+                  ? 'bg-[#35373c] text-white font-bold'
+                  : 'text-discord-textMuted hover:bg-[#35373c]/40 hover:text-discord-textNormal'
+              }`}
+            >
+              <Gamepad2 size={16} className={activeTab === 'overlay' ? 'text-discord-green' : ''} />
+              <span>In-Game Overlay & Atalhos</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('loopback')}
               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
                 activeTab === 'loopback'
@@ -295,7 +309,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="pt-4 border-t border-[#1f2023] text-[10px] text-discord-textMuted">
-            Versão v1.0.0 • Studio DSP
+            Versão v1.0.0 • Studio DSP & Overlay
           </div>
         </div>
 
@@ -306,6 +320,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <h2 className="text-base font-bold text-discord-textHeader">
               {activeTab === 'connection' && 'Servidor & Conexão (.env)'}
               {activeTab === 'audio' && 'Microfone, DSP Anti-Ruído & Teste de Voz'}
+              {activeTab === 'overlay' && 'In-Game Discord Overlay & Atalhos Globais'}
               {activeTab === 'loopback' && 'Prevenção de Duplicação & Cancelamento de Eco'}
               {activeTab === 'video' && 'Aceleração GPU & Protocolo Binário (0xAA)'}
               {activeTab === 'logs' && 'Logs & Diagnóstico em Tempo Real'}
@@ -571,7 +586,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     Processamento Avançado de Voz
                   </span>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {/* IA RNNoise */}
+                    <div
+                      onClick={() => setFormData({ ...formData, rnnoiseSuppression: !formData.rnnoiseSuppression })}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        formData.rnnoiseSuppression
+                          ? 'bg-discord-green/10 border-discord-green/50 text-white'
+                          : 'bg-[#1e1f22] border-[#2e3035] text-discord-textMuted'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-xs">IA RNNoise</span>
+                        <div className={`w-2 h-2 rounded-full ${formData.rnnoiseSuppression ? 'bg-discord-green' : 'bg-gray-600'}`} />
+                      </div>
+                      <span className="text-[10px] block leading-tight">Rede neural anti-ruído</span>
+                    </div>
+
                     {/* Noise Suppression */}
                     <div
                       onClick={() => setFormData({ ...formData, noiseSuppression: !formData.noiseSuppression })}
@@ -582,10 +613,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-xs">Redução de Ruído</span>
+                        <span className="font-bold text-xs">Redução Passa-Faixa</span>
                         <div className={`w-2 h-2 rounded-full ${formData.noiseSuppression ? 'bg-discord-green' : 'bg-gray-600'}`} />
                       </div>
-                      <span className="text-[10px] block leading-tight">Filtra teclado mecânico e ventiladores</span>
+                      <span className="text-[10px] block leading-tight">Filtra teclado mecânico</span>
                     </div>
 
                     {/* Echo Cancellation */}
@@ -601,7 +632,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="font-bold text-xs">Cancelamento de Eco</span>
                         <div className={`w-2 h-2 rounded-full ${formData.echoCancellation ? 'bg-discord-green' : 'bg-gray-600'}`} />
                       </div>
-                      <span className="text-[10px] block leading-tight">Impede retorno do som dos alto-falantes</span>
+                      <span className="text-[10px] block leading-tight">Sem retorno de fone/caixa</span>
                     </div>
 
                     {/* Auto Gain Control */}
@@ -617,8 +648,91 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="font-bold text-xs">Ganho Automático</span>
                         <div className={`w-2 h-2 rounded-full ${formData.autoGainControl ? 'bg-discord-green' : 'bg-gray-600'}`} />
                       </div>
-                      <span className="text-[10px] block leading-tight">Nivela volume de vozes baixas e altas</span>
+                      <span className="text-[10px] block leading-tight">Nivela volume das vozes</span>
                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab: In-Game Overlay & Global Hotkeys */}
+            {activeTab === 'overlay' && (
+              <div className="space-y-4 text-xs animate-fade-in">
+                <div className="p-3 bg-[#1e1f22] rounded-xl border border-discord-border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-sm text-discord-textHeader block">
+                        In-Game Overlay Flutuante
+                      </span>
+                      <span className="text-[11px] text-discord-textMuted">
+                        Exibe quem está falando e notificações de chat diretamente por cima dos seus jogos.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, enableInGameOverlay: !formData.enableInGameOverlay })}
+                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${
+                        formData.enableInGameOverlay ? 'bg-discord-green justify-end' : 'bg-[#35373c] justify-start'
+                      }`}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-md transform transition-transform" />
+                    </button>
+                  </div>
+
+                  {formData.enableInGameOverlay && (
+                    <div className="pt-2 border-t border-[#2b2d31] space-y-2">
+                      <label className="font-semibold text-discord-textHeader block">
+                        Posição do Overlay na Tela
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: 'top-left', label: 'Superior Esquerdo (Padrão)' },
+                          { id: 'top-right', label: 'Superior Direito' },
+                          { id: 'bottom-left', label: 'Inferior Esquerdo' },
+                          { id: 'bottom-right', label: 'Inferior Direito' },
+                        ].map((pos) => (
+                          <button
+                            key={pos.id}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, overlayPosition: pos.id as any })}
+                            className={`p-2 rounded-lg border text-left font-medium transition-all ${
+                              formData.overlayPosition === pos.id
+                                ? 'bg-discord-accent/20 border-discord-accent text-white'
+                                : 'bg-[#2b2d31] border-[#383a40] text-discord-textMuted hover:text-white'
+                            }`}
+                          >
+                            {pos.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Global Hotkeys Guide */}
+                <div className="p-3 bg-[#1e1f22] rounded-xl border border-discord-border space-y-2.5">
+                  <span className="font-bold text-discord-textHeader flex items-center gap-1.5">
+                    <Keyboard size={15} className="text-discord-accent" />
+                    <span>Atalhos de Teclado Globais (Funcionam dentro de jogos)</span>
+                  </span>
+
+                  <div className="space-y-1.5 pt-1">
+                    {[
+                      { key: 'Ctrl + Shift + M', action: 'Mutar / Desmutar Microfone' },
+                      { key: 'Ctrl + Shift + D', action: 'Ativar / Desativar Ensurdecer' },
+                      { key: 'Ctrl + Shift + O', action: 'Exibir / Ocultar In-Game Overlay' },
+                      { key: 'Ctrl + Shift + S', action: 'Iniciar / Parar Compartilhamento de Tela' },
+                    ].map((hk) => (
+                      <div
+                        key={hk.key}
+                        className="flex items-center justify-between p-2 rounded-lg bg-[#2b2d31] border border-[#383a40]"
+                      >
+                        <span className="text-discord-textNormal font-medium">{hk.action}</span>
+                        <kbd className="px-2 py-0.5 rounded bg-[#1e1f22] text-discord-yellow font-mono text-[11px] border border-white/10 shadow-inner">
+                          {hk.key}
+                        </kbd>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>

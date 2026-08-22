@@ -105,7 +105,7 @@ export interface RoomDetails {
   updatedAt: string;
 }
 
-export type QualityProfile = 'SMOOTH_60FPS' | 'BALANCED_HD' | 'TEXT_CRISP' | 'LOW_BANDWIDTH';
+export type QualityProfile = 'ULTRA_120FPS' | 'SMOOTH_60FPS' | 'BALANCED_HD' | 'TEXT_CRISP' | 'LOW_BANDWIDTH';
 
 export interface QualityProfileConfig {
   name: QualityProfile;
@@ -118,6 +118,15 @@ export interface QualityProfileConfig {
 }
 
 export const QUALITY_PROFILES: Record<QualityProfile, QualityProfileConfig> = {
+  ULTRA_120FPS: {
+    name: 'ULTRA_120FPS',
+    label: '120 FPS Competitivo (1080p @ 120fps)',
+    description: 'Modo DXGI Ultra para e-Sports (Valorant, CS2, Fortnite) (~7.5 Mbps)',
+    width: 1920,
+    height: 1080,
+    fps: 120,
+    bitrate: 7_500_000,
+  },
   SMOOTH_60FPS: {
     name: 'SMOOTH_60FPS',
     label: '60 FPS Fluído (1080p @ 60fps)',
@@ -182,6 +191,7 @@ export interface Participant {
   isHost?: boolean;
   joinedAt?: string;
   volume?: number; // 0 to 100 for local playback volume
+  activity?: string; // e.g. "Jogando VALORANT"
 }
 
 export interface PresenterInfo {
@@ -206,6 +216,7 @@ export type ClientTxMessage =
   | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null; micOn?: boolean; clientUserId?: string }
   | { type: 'toggle_mic'; roomId: string; micOn: boolean; clientUserId?: string; userName?: string }
   | { type: 'user_speaking'; roomId: string; isSpeaking: boolean; clientUserId?: string; userName?: string }
+  | { type: 'user_activity'; roomId: string; activity: string; clientUserId?: string; userName?: string }
   | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile; codec?: string; clientUserId?: string }
   | { type: 'stop_screen_share'; roomId: string; clientUserId?: string }
   | { type: 'request_keyframe'; roomId: string }
@@ -218,15 +229,15 @@ export type ServerRxMessage =
   | { type: 'connected'; userId?: string; userName?: string; clientUserId?: string }
   | { type: 'room_state'; roomId?: string; title?: string; isPasswordProtected?: boolean; maxParticipants?: number; room?: Partial<RoomDetails>; participants?: Participant[]; activePresenter?: PresenterInfo | null; activeScreenShare?: any; yourUserId?: string; yourClientUserId?: string; messages?: ChatMessage[] }
   | { type: 'user_joined'; user?: any; participant?: any; userId?: string; userName?: string; clientUserId?: string; avatarUrl?: string | null; micOn?: boolean; isSpeaking?: boolean; isSharing?: boolean; isScreenSharing?: boolean }
-  | { type: 'user_left'; userId?: string; userName?: string; clientUserId?: string; user?: any }
-  | { type: 'screen_share_started'; presenterId?: string; userId?: string; name?: string; presenterName?: string; userName?: string; qualityProfile?: QualityProfile; codec?: string }
-  | { type: 'screen_share_stopped'; presenterId?: string; userId?: string }
-  | { type: 'mic_updated'; userId?: string; userName?: string; micOn?: boolean; user?: any }
-  | { type: 'mic_toggled'; userId?: string; userName?: string; micOn?: boolean; user?: any }
-  | { type: 'speaking_updated'; userId?: string; userName?: string; isSpeaking?: boolean; user?: any }
-  | { type: 'chat_message'; message?: ChatMessage; id?: string; roomId?: string; userId?: string; clientUserId?: string; userName?: string; name?: string; avatarUrl?: string | null; content?: string; text?: string; createdAt?: string }
-  | { type: 'typing'; userId?: string; clientUserId?: string; userName?: string; isTyping?: boolean }
-  | { type: 'reaction'; emoji?: string; userName?: string; userId?: string; clientUserId?: string }
+  | { type: 'user_left'; userId?: string; clientUserId?: string; userName?: string }
+  | { type: 'user_activity'; userId?: string; clientUserId?: string; userName?: string; activity?: string }
+  | { type: 'mic_updated'; userId: string; micOn: boolean; clientUserId?: string; userName?: string }
+  | { type: 'user_speaking'; userId: string; isSpeaking: boolean; clientUserId?: string; userName?: string }
+  | { type: 'screen_share_started'; presenter: PresenterInfo }
+  | { type: 'screen_share_stopped'; presenter?: PresenterInfo }
+  | { type: 'chat_message'; message: ChatMessage }
+  | { type: 'typing'; userName: string; isTyping: boolean }
+  | { type: 'reaction'; emoji: string; userName?: string }
   | { type: 'request_keyframe'; roomId?: string; requestedBy?: string }
   | { type: 'room_closed'; roomId: string; reason?: string }
   | { type: 'error'; error?: string; message?: string }
@@ -258,7 +269,7 @@ export interface BinaryHeader {
 }
 
 // ==========================================
-// Configurações e Telemetria
+// Configurações, Telemetria & In-Game Overlay
 // ==========================================
 
 export interface AppConfig {
@@ -270,12 +281,15 @@ export interface AppConfig {
   avatarUrl: string;
   echoCancellation: boolean;
   noiseSuppression: boolean;
+  rnnoiseSuppression: boolean; // Neural / AI noise filter
   autoGainControl: boolean;
   autoSensitivity: boolean;
   inputVolume: number;
   outputVolume: number;
   preventScreenAudioLoopback: boolean;
   vadSensitivity: number; // 0 to 100
+  enableInGameOverlay: boolean;
+  overlayPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   selectedMicrophoneId?: string;
   selectedSpeakerId?: string;
   mockMode: boolean;
@@ -291,4 +305,32 @@ export interface TelemetryStats {
   bytesSent: number;
   audioJitterMs: number;
   codec: string;
+}
+
+export interface OverlayParticipant {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  isSpeaking: boolean;
+  micOn: boolean;
+  isDeafened?: boolean;
+  activity?: string;
+}
+
+export interface OverlayRecentMessage {
+  id: string;
+  userName: string;
+  content: string;
+  avatarUrl?: string | null;
+  timestamp: number;
+}
+
+export interface OverlayState {
+  activeRoomTitle?: string;
+  participants: OverlayParticipant[];
+  recentMessages: OverlayRecentMessage[];
+  isLocked: boolean; // Click-through mode enabled for games
+  detectedGame?: string;
+  myMicOn: boolean;
+  myDeafened: boolean;
 }

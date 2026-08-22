@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, MicOff, Monitor, Volume2, Crown, Sliders, User } from 'lucide-react';
+import { Mic, MicOff, Monitor, Volume2, Crown, Sliders, User, Gamepad2 } from 'lucide-react';
 import { Participant } from '../../types/live-room';
 
 interface ParticipantGridProps {
@@ -70,9 +70,9 @@ export const ParticipantGrid: React.FC<ParticipantGridProps> = ({
                   : 'hover:border-[#4e5058]'
               }`}
             >
-              {/* Top Badges (Host, Screen Share, Volume) */}
+              {/* Top Badges (Host, Screen Share, Game Activity, Volume) */}
               <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {p.isHost && (
                     <span className="flex items-center gap-1 text-discord-yellow text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-sm shadow">
                       <Crown size={11} />
@@ -83,6 +83,12 @@ export const ParticipantGrid: React.FC<ParticipantGridProps> = ({
                     <span className="flex items-center gap-1 text-discord-accent text-[10px] font-bold px-2 py-0.5 rounded-full bg-discord-accent/20 border border-discord-accent/40 backdrop-blur-sm shadow animate-pulse">
                       <Monitor size={11} />
                       <span>Ao Vivo</span>
+                    </span>
+                  )}
+                  {p.activity && !compact && (
+                    <span className="flex items-center gap-1 text-discord-green text-[10px] font-bold px-2 py-0.5 rounded-full bg-discord-green/15 border border-discord-green/30 backdrop-blur-sm shadow">
+                      <Gamepad2 size={11} />
+                      <span className="truncate max-w-[120px]">{p.activity}</span>
                     </span>
                   )}
                 </div>

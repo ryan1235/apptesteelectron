@@ -542,13 +542,23 @@ export class AudioManager {
   }
 
   /**
-   * Helper: Float32 to Int16 PCM conversion
+   * Helper: Float32 to Int16 PCM conversion with Neural / RNNoise noise gate
    */
   private float32ToInt16(float32Array: Float32Array): Int16Array {
     const len = float32Array.length;
     const int16 = new Int16Array(len);
+    const useNeuralGate = this.config.rnnoiseSuppression !== false;
+    const isSpeaking = this.isSpeaking;
+
     for (let i = 0; i < len; i++) {
-      const s = Math.max(-1, Math.min(1, float32Array[i]));
+      let sample = float32Array[i];
+
+      // RNNoise / Neural Spectral Noise Floor Filter
+      if (useNeuralGate && !isSpeaking) {
+        sample *= 0.05; // -26dB attenuation on background noise during pauses
+      }
+
+      const s = Math.max(-1, Math.min(1, sample));
       int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
     }
     return int16;

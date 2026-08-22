@@ -7,10 +7,12 @@ interface UserFooterProps {
   isMicMuted: boolean;
   isDeafened: boolean;
   isSpeaking: boolean;
+  activity?: string;
   onToggleMic: () => void;
   onToggleDeafen: () => void;
   onOpenSettings: () => void;
   onOpenLogin?: () => void;
+  onToggleOverlay?: () => void;
 }
 
 export const UserFooter: React.FC<UserFooterProps> = ({
@@ -19,10 +21,12 @@ export const UserFooter: React.FC<UserFooterProps> = ({
   isMicMuted,
   isDeafened,
   isSpeaking,
+  activity,
   onToggleMic,
   onToggleDeafen,
   onOpenSettings,
   onOpenLogin,
+  onToggleOverlay,
 }) => {
   return (
     <div className="h-[52px] bg-[#232428] px-2 flex items-center justify-between select-none border-t border-[#1f2023]">
@@ -52,7 +56,9 @@ export const UserFooter: React.FC<UserFooterProps> = ({
           <span className="text-xs font-semibold text-discord-textHeader truncate group-hover:text-white">
             {userName}
           </span>
-          <span className="text-[10px] text-discord-textMuted truncate">#Online</span>
+          <span className="text-[10px] text-discord-green truncate font-medium">
+            {activity || '#Online'}
+          </span>
         </div>
       </div>
 

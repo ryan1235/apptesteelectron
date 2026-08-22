@@ -36,10 +36,12 @@ interface ChannelSidebarProps {
   isMicMuted: boolean;
   isDeafened: boolean;
   isSpeaking: boolean;
+  activity?: string;
   onToggleMic: () => void;
   onToggleDeafen: () => void;
   onOpenSettings: () => void;
   onOpenLogin?: () => void;
+  onToggleOverlay?: () => void;
 }
 
 export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
@@ -59,10 +61,12 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
   isMicMuted,
   isDeafened,
   isSpeaking,
+  activity,
   onToggleMic,
   onToggleDeafen,
   onOpenSettings,
   onOpenLogin,
+  onToggleOverlay,
 }) => {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
@@ -376,10 +380,12 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
         isMicMuted={isMicMuted}
         isDeafened={isDeafened}
         isSpeaking={isSpeaking}
+        activity={activity}
         onToggleMic={onToggleMic}
         onToggleDeafen={onToggleDeafen}
         onOpenSettings={onOpenSettings}
         onOpenLogin={onOpenLogin}
+        onToggleOverlay={onToggleOverlay}
       />
     </div>
   );

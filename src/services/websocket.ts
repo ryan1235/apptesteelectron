@@ -247,7 +247,7 @@ export class LiveRoomWebSocketClient {
           p.id === 'usr-local-id' ? { ...p, isSpeaking: msg.isSpeaking } : p
         );
         this.onJsonMessage?.({
-          type: 'speaking_updated',
+          type: 'user_speaking',
           userId: 'usr-local-id',
           isSpeaking: msg.isSpeaking,
         });
@@ -259,9 +259,12 @@ export class LiveRoomWebSocketClient {
         );
         this.onJsonMessage?.({
           type: 'screen_share_started',
-          presenterId: 'usr-local-id',
-          presenterName: this.config.userName,
-          qualityProfile: msg.qualityProfile,
+          presenter: {
+            userId: 'usr-local-id',
+            userName: this.config.userName,
+            qualityProfile: msg.qualityProfile,
+            startedAt: new Date().toISOString(),
+          },
         });
         break;
 
@@ -271,7 +274,6 @@ export class LiveRoomWebSocketClient {
         );
         this.onJsonMessage?.({
           type: 'screen_share_stopped',
-          presenterId: 'usr-local-id',
         });
         break;
     }

@@ -1,10 +1,13 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer, globalShortcut, screen } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, exec, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null = null;
+let overlayWindow: BrowserWindow | null = null;
 let activeProcessCapture: ChildProcess | null = null;
+let gameScanInterval: any = null;
+let lastDetectedGame: string | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -21,15 +24,12 @@ app.commandLine.appendSwitch(
 );
 
 function getProcessAudioCaptureExePath(): string {
-  // 1. Packaged app: process.resourcesPath/ProcessAudioCapture.exe
   const packagedPath = path.join(process.resourcesPath, 'ProcessAudioCapture.exe');
   if (fs.existsSync(packagedPath)) return packagedPath;
 
-  // 2. dist-electron/ProcessAudioCapture.exe
   const distPath = path.join(__dirname, 'ProcessAudioCapture.exe');
   if (fs.existsSync(distPath)) return distPath;
 
-  // 3. native/ProcessAudioCapture.exe
   const nativePath = path.join(__dirname, '../native/ProcessAudioCapture.exe');
   if (fs.existsSync(nativePath)) return nativePath;
 
@@ -43,6 +43,120 @@ function stopProcessAudioCapture() {
     } catch (e) {}
     activeProcessCapture = null;
   }
+}
+
+// Database of top games for automatic activity detection
+const KNOWN_GAMES: Record<string, string> = {
+  'valorant.exe': 'VALORANT',
+  'valorant-win64-shipping.exe': 'VALORANT',
+  'cs2.exe': 'Counter-Strike 2',
+  'csgo.exe': 'Counter-Strike 2',
+  'gta5.exe': 'Grand Theft Auto V',
+  'leagueclientux.exe': 'League of Legends',
+  'league of legends.exe': 'League of Legends',
+  'fortniteclient-win64-shipping.exe': 'Fortnite',
+  'robloxplayerbeta.exe': 'Roblox',
+  'javaw.exe': 'Minecraft',
+  'minecraft.exe': 'Minecraft',
+  'bedrock_server.exe': 'Minecraft Bedrock',
+  'overwatch.exe': 'Overwatch 2',
+  'r5apex.exe': 'Apex Legends',
+  'rocketleague.exe': 'Rocket League',
+  'dota2.exe': 'Dota 2',
+  'genshinimpact.exe': 'Genshin Impact',
+  'honkaistarrail.exe': 'Honkai: Star Rail',
+  'cyberpunk2077.exe': 'Cyberpunk 2077',
+  'cod.exe': 'Call of Duty: Warzone',
+  'steam.exe': 'Steam',
+  'discord.exe': 'Discord',
+  'spotify.exe': 'Spotify',
+  'code.exe': 'Visual Studio Code',
+};
+
+function startGameScan() {
+  if (process.platform !== 'win32') return;
+
+  const scan = () => {
+    exec('tasklist /FO CSV /NH', { windowsHide: true }, (err, stdout) => {
+      if (err || !stdout) return;
+
+      const lines = stdout.toLowerCase().split('\n');
+      let foundGame: string | null = null;
+
+      for (const line of lines) {
+        const match = line.match(/^"([^"]+)"/);
+        if (match) {
+          const procName = match[1];
+          if (KNOWN_GAMES[procName]) {
+            foundGame = KNOWN_GAMES[procName];
+            break;
+          }
+        }
+      }
+
+      if (foundGame !== lastDetectedGame) {
+        lastDetectedGame = foundGame;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('game-activity-detected', foundGame);
+        }
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+          overlayWindow.webContents.send('game-activity-detected', foundGame);
+        }
+      }
+    });
+  };
+
+  scan();
+  gameScanInterval = setInterval(scan, 6000);
+}
+
+function createOverlayWindow() {
+  if (overlayWindow) return;
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width } = primaryDisplay.workAreaSize;
+
+  overlayWindow = new BrowserWindow({
+    width: 380,
+    height: 600,
+    x: 24,
+    y: 24,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    focusable: false,
+    show: false, // will show when room is joined or toggled
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
+    },
+  });
+
+  // Keep overlay window above fullscreen games
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  // Default: pass mouse clicks through directly to the game
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+
+  const overlayUrl = isDev
+    ? 'http://127.0.0.1:5173/?overlay=true'
+    : `file://${path.join(__dirname, '../dist/index.html')}?overlay=true`;
+
+  overlayWindow.loadURL(overlayUrl).catch(() => {
+    if (isDev) {
+      overlayWindow?.loadURL('http://localhost:5173/?overlay=true').catch(console.error);
+    }
+  });
+
+  overlayWindow.on('closed', () => {
+    overlayWindow = null;
+  });
 }
 
 function createWindow() {
@@ -72,6 +186,10 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     stopProcessAudioCapture();
+    if (gameScanInterval) clearInterval(gameScanInterval);
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.close();
+    }
     mainWindow = null;
   });
 
@@ -84,14 +202,67 @@ function createWindow() {
   });
 }
 
+function registerGlobalHotkeys() {
+  try {
+    // 1. Toggle Mute (Ctrl + Shift + M)
+    globalShortcut.register('CommandOrControl+Shift+M', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('global-toggle-mic');
+      }
+    });
+
+    // 2. Toggle Deafen (Ctrl + Shift + D)
+    globalShortcut.register('CommandOrControl+Shift+D', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('global-toggle-deafen');
+      }
+    });
+
+    // 3. Toggle In-Game Overlay (Ctrl + Shift + O)
+    globalShortcut.register('CommandOrControl+Shift+O', () => {
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        if (overlayWindow.isVisible()) {
+          overlayWindow.hide();
+        } else {
+          overlayWindow.showInactive();
+        }
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('global-toggle-overlay');
+      }
+    });
+
+    // 4. Toggle Screen Share (Ctrl + Shift + S)
+    globalShortcut.register('CommandOrControl+Shift+S', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('global-toggle-screen');
+      }
+    });
+
+    console.log('[GLOBAL-HOTKEYS] Registered Ctrl+Shift+M (Mute), Ctrl+Shift+D (Deafen), Ctrl+Shift+O (Overlay), Ctrl+Shift+S (Screen)');
+  } catch (err) {
+    console.warn('[GLOBAL-HOTKEYS] Failed to register some shortcuts:', err);
+  }
+}
+
 app.whenReady().then(() => {
   createWindow();
+  createOverlayWindow();
+  registerGlobalHotkeys();
+  startGameScan();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      createOverlayWindow();
     }
   });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  if (gameScanInterval) clearInterval(gameScanInterval);
+  stopProcessAudioCapture();
 });
 
 app.on('window-all-closed', () => {
@@ -177,6 +348,34 @@ ipcMain.handle('stop-process-audio-capture', async () => {
   return true;
 });
 
+// In-Game Overlay IPC Handlers
+ipcMain.on('update-overlay-state', (_event, state) => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send('overlay-state-updated', state);
+    if (state.activeRoomTitle && !overlayWindow.isVisible()) {
+      overlayWindow.showInactive();
+    } else if (!state.activeRoomTitle && overlayWindow.isVisible()) {
+      overlayWindow.hide();
+    }
+  }
+});
+
+ipcMain.on('set-overlay-ignore-mouse', (_event, ignore: boolean) => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.setIgnoreMouseEvents(ignore, { forward: true });
+  }
+});
+
+ipcMain.on('toggle-overlay-window', () => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (overlayWindow.isVisible()) {
+      overlayWindow.hide();
+    } else {
+      overlayWindow.showInactive();
+    }
+  }
+});
+
 // Window control IPC handlers
 ipcMain.on('window-minimize', () => {
   mainWindow?.minimize();
@@ -192,6 +391,10 @@ ipcMain.on('window-maximize', () => {
 
 ipcMain.on('window-close', () => {
   stopProcessAudioCapture();
+  if (gameScanInterval) clearInterval(gameScanInterval);
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.close();
+  }
   mainWindow?.close();
 });
 
