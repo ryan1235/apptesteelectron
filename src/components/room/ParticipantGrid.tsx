@@ -126,7 +126,7 @@ export const ParticipantGrid: React.FC<ParticipantGridProps> = ({
                     <MicOff size={12} className="text-discord-red" />
                   )}
                   <span className="truncate">
-                    {p.name} {isMe && <span className="text-discord-textMuted font-normal">(Você)</span>}
+                    {p.name}
                   </span>
                 </div>
               </div>

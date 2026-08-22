@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, MessageSquare, Hash, Smile, Flame, Heart, ThumbsUp, Sparkles, Rocket, Lightbulb, PartyPopper } from 'lucide-react';
+import { Send, MessageSquare, Hash, Flame, Heart, ThumbsUp, Sparkles, Rocket, Lightbulb, PartyPopper } from 'lucide-react';
 import { ChatMessage } from '../../types/live-room';
 
 interface ChatSidebarProps {
   roomTitle: string;
   messages: ChatMessage[];
   currentUserId: string;
+  currentUserName?: string;
+  clientUserId?: string;
   typingUsers: string[];
   onSendMessage: (text: string) => void;
   onSendReaction: (emoji: string) => void;
@@ -18,6 +20,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   roomTitle,
   messages,
   currentUserId,
+  currentUserName = '',
+  clientUserId = '',
   typingUsers,
   onSendMessage,
   onSendReaction,
@@ -68,12 +72,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <Hash size={18} className="text-discord-textMuted flex-shrink-0" />
           <span className="truncate text-sm font-bold">{roomTitle}</span>
         </div>
-        <span className="text-[11px] px-2 py-0.5 rounded bg-discord-accent/15 text-discord-accent font-semibold">
-          Chat
+        <span className="text-[11px] px-2 py-0.5 rounded bg-[#2b2d31] text-discord-textMuted font-semibold">
+          Chat Ao Vivo
         </span>
       </div>
 
-      {/* Messages Stream (Discord Flow) */}
+      {/* Messages Stream (Authentic Discord Flow) */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-discord-textMuted text-xs space-y-2 py-8">
@@ -88,11 +92,17 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         ) : (
           messages.map((msg, index) => {
             const prevMsg = index > 0 ? messages[index - 1] : null;
-            const isMe = msg.userId === currentUserId;
 
             // Group consecutive messages by same user within 2 minutes
-            const isSameUser = prevMsg && (prevMsg.userId === msg.userId || prevMsg.userName === msg.userName);
-            const timeDiff = prevMsg ? Math.abs(new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime()) : 999999;
+            const isSameUser =
+              prevMsg &&
+              (prevMsg.userId === msg.userId ||
+                (prevMsg.clientUserId && prevMsg.clientUserId === msg.clientUserId) ||
+                (prevMsg.userName && msg.userName && prevMsg.userName.toLowerCase() === msg.userName.toLowerCase()));
+
+            const timeDiff = prevMsg
+              ? Math.abs(new Date(msg.createdAt).getTime() - new Date(prevMsg.createdAt).getTime())
+              : 999999;
             const isCompact = isSameUser && timeDiff < 120000;
 
             let timeFormatted = '';
@@ -126,11 +136,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 key={msg.id || index}
                 className="hover:bg-[#2e3035]/50 px-3 py-1.5 rounded-xl -mx-2 transition-colors flex items-start gap-3 mt-2 group"
               >
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs overflow-hidden flex-shrink-0 mt-0.5 shadow-sm ${
-                    isMe ? 'bg-discord-accent ring-2 ring-discord-accent/40' : 'bg-[#35373c]'
-                  }`}
-                >
+                <div className="w-9 h-9 rounded-full bg-[#35373c] flex items-center justify-center font-bold text-white text-xs overflow-hidden flex-shrink-0 mt-0.5 shadow-sm">
                   {msg.avatarUrl ? (
                     <img src={msg.avatarUrl} alt={msg.userName} className="w-full h-full object-cover" />
                   ) : (
@@ -140,12 +146,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
-                    <span
-                      className={`text-[13px] font-bold truncate hover:underline cursor-pointer ${
-                        isMe ? 'text-discord-accent' : 'text-white'
-                      }`}
-                    >
-                      {msg.userName} {isMe && <span className="text-discord-textMuted text-[10px] font-normal">(Você)</span>}
+                    <span className="text-[13px] font-bold text-white truncate hover:underline cursor-pointer">
+                      {msg.userName}
                     </span>
                     <span className="text-[10px] text-discord-textMuted font-mono">
                       {timeFormatted}
