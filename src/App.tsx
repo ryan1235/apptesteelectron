@@ -398,13 +398,24 @@ export const App: React.FC = () => {
           const chatMsg: ChatMessage = msg.message || {
             id: msg.id || 'msg-' + Date.now(),
             roomId: msg.roomId || '',
-            userId: msg.userId || '',
+            userId: msg.userId || msg.clientUserId || '',
             userName: msg.userName || msg.name || 'Anônimo',
             avatarUrl: msg.avatarUrl || null,
             content: msg.content || msg.text || '',
             createdAt: msg.createdAt || new Date().toISOString(),
           };
-          setMessages((prev) => [...prev, chatMsg]);
+
+          setMessages((prev) => {
+            const isDuplicate = prev.some(
+              (m) =>
+                m.id === chatMsg.id ||
+                (m.content === chatMsg.content &&
+                  (m.userName.toLowerCase() === chatMsg.userName.toLowerCase() || m.userId === chatMsg.userId) &&
+                  Math.abs(new Date(m.createdAt).getTime() - new Date(chatMsg.createdAt).getTime()) < 4000)
+            );
+            if (isDuplicate) return prev;
+            return [...prev, chatMsg];
+          });
           break;
         }
 
@@ -723,23 +734,14 @@ export const App: React.FC = () => {
   // Send Chat Message
   const handleSendMessage = (text: string) => {
     if (!activeRoom) return;
-    const chatMsg: ChatMessage = {
-      id: 'msg-' + Date.now(),
-      roomId: activeRoom.id,
-      userId: currentUserId || config.clientUserId || 'usr-local',
-      userName: config.userName,
-      avatarUrl: config.avatarUrl || null,
-      content: text,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, chatMsg]);
-
     wsClientRef.current.sendJson({
       type: 'chat_message',
       roomId: activeRoom.id,
       text,
       content: text,
       clientUserId: config.clientUserId,
+      userName: config.userName,
+      avatarUrl: config.avatarUrl || null,
     });
   };
 

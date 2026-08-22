@@ -141,21 +141,23 @@ export const RoomView: React.FC<RoomViewProps> = ({
               </div>
 
               {/* Bottom Mini Participant Strip */}
-              <div className="h-32 bg-[#1e1f22]/90 border-t border-[#1f2023] overflow-x-auto flex items-center p-2 backdrop-blur-sm">
+              <div className="h-28 bg-[#1e1f22]/90 border-t border-[#1f2023] overflow-x-auto flex items-center p-2 backdrop-blur-sm">
                 <ParticipantGrid
                   participants={participants}
                   currentUserId={currentUserId}
                   onSetUserVolume={onSetUserVolume}
+                  compact={true}
                 />
               </div>
             </div>
           ) : (
             // Full Participant Grid when no screen share is active
-            <div className="flex-1 flex flex-col justify-center bg-discord-chat overflow-y-auto p-4">
+            <div className="flex-1 flex flex-col justify-center items-center bg-[#1e1f22] overflow-y-auto p-6">
               <ParticipantGrid
                 participants={participants}
                 currentUserId={currentUserId}
                 onSetUserVolume={onSetUserVolume}
+                compact={false}
               />
             </div>
           )}
