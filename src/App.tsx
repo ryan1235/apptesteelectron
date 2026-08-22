@@ -833,6 +833,11 @@ export const App: React.FC = () => {
           profile
         );
 
+        // Start Stereo Screen Audio Capture & Streaming
+        if (captureResult.hasAudio || stream.getAudioTracks().length > 0) {
+          await audioManagerRef.current.startScreenAudioCapture(stream);
+        }
+
         // Notify room via WebSocket
         wsClientRef.current.sendJson({
           type: 'start_screen_share',
@@ -858,6 +863,7 @@ export const App: React.FC = () => {
   const stopScreenShare = () => {
     screenCapturerRef.current.stopCapture();
     videoCodecsRef.current.stopEncoding();
+    audioManagerRef.current.stopScreenAudioCapture();
     setLocalScreenStream(null);
     setIsScreenSharing(false);
 

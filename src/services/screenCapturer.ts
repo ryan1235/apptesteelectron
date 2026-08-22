@@ -60,6 +60,7 @@ export class ScreenCapturer {
           ? {
               mandatory: {
                 chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceId,
               },
             }
           : false,
@@ -80,6 +81,26 @@ export class ScreenCapturer {
       try {
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
         this.activeStream = stream;
+
+        // If audio was requested but no track was attached directly by window capture, try desktop audio loopback
+        if (captureAudio && stream.getAudioTracks().length === 0) {
+          try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                },
+              } as any,
+              video: false,
+            });
+            if (audioStream.getAudioTracks().length > 0) {
+              stream.addTrack(audioStream.getAudioTracks()[0]);
+            }
+          } catch (audioErr) {
+            console.warn('Aviso ao capturar áudio desktop loopback:', audioErr);
+          }
+        }
+
         const hasAudio = stream.getAudioTracks().length > 0;
         return {
           stream,

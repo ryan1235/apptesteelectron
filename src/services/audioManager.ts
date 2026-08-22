@@ -42,6 +42,12 @@ export class AudioManager {
   private sequenceNumber: number = 0;
   private noiseGateGain: number = 1.0; // Dynamic envelope for smooth gate transitions
 
+  // Screen Audio Capture state
+  private screenAudioStream: MediaStream | null = null;
+  private screenAudioSourceNode: MediaStreamAudioSourceNode | null = null;
+  private screenScriptProcessorNode: ScriptProcessorNode | null = null;
+  private screenAudioSequenceNumber: number = 0;
+
   constructor(config: AppConfig) {
     this.config = config;
   }
@@ -296,6 +302,96 @@ export class AudioManager {
   }
 
   /**
+   * Starts capturing and streaming Stereo PCM (44.1kHz) audio from a shared screen/application
+   */
+  public async startScreenAudioCapture(stream: MediaStream): Promise<boolean> {
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      logger.info('AUDIO', 'Nenhuma faixa de áudio encontrada no stream de captura de tela.');
+      return false;
+    }
+
+    if (!this.audioCtx) {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioCtx = new AudioCtxClass({
+        sampleRate: 44100,
+        latencyHint: 'interactive',
+      });
+    }
+
+    if (this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume();
+    }
+
+    this.stopScreenAudioCapture();
+
+    try {
+      this.screenAudioStream = new MediaStream([audioTracks[0]]);
+      this.screenAudioSourceNode = this.audioCtx.createMediaStreamSource(this.screenAudioStream);
+
+      // Stereo ScriptProcessor (bufferSize: 2048, 2 inputs, 2 outputs)
+      this.screenScriptProcessorNode = this.audioCtx.createScriptProcessor(2048, 2, 2);
+
+      this.screenScriptProcessorNode.onaudioprocess = (e) => {
+        if (!this.roomId || !this.onAudioPacket) return;
+
+        const left = e.inputBuffer.getChannelData(0);
+        const right = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : left;
+
+        // Interleave Stereo L/R Float32
+        const interleaved = new Float32Array(left.length * 2);
+        for (let i = 0; i < left.length; i++) {
+          interleaved[i * 2] = left[i];
+          interleaved[i * 2 + 1] = right[i];
+        }
+
+        const pcmInt16 = this.float32ToInt16(interleaved);
+
+        // Packetize with PacketType.SCREEN_AUDIO_PCM (0x02)
+        const packet = encodeBinaryPacket({
+          packetType: PacketType.SCREEN_AUDIO_PCM,
+          roomId: this.roomId,
+          timestampUs: performance.now() * 1000,
+          sequenceNumber: (this.screenAudioSequenceNumber++) & 0xFFFFFF,
+          payload: new Uint8Array(pcmInt16.buffer),
+        });
+
+        this.onAudioPacket(packet);
+      };
+
+      this.screenAudioSourceNode.connect(this.screenScriptProcessorNode);
+
+      // Connect to dummy silence to keep processor active without echoing back locally
+      const dummyGain = this.audioCtx.createGain();
+      dummyGain.gain.value = 0;
+      this.screenScriptProcessorNode.connect(dummyGain);
+      dummyGain.connect(this.audioCtx.destination);
+
+      logger.success('AUDIO', 'Transmissão de áudio da tela (Stereo PCM 44.1kHz) ativada com sucesso!');
+      return true;
+    } catch (err) {
+      console.warn('Falha ao inicializar captura de áudio da tela:', err);
+      return false;
+    }
+  }
+
+  public stopScreenAudioCapture() {
+    if (this.screenScriptProcessorNode) {
+      try {
+        this.screenScriptProcessorNode.disconnect();
+      } catch (e) {}
+      this.screenScriptProcessorNode = null;
+    }
+    if (this.screenAudioSourceNode) {
+      try {
+        this.screenAudioSourceNode.disconnect();
+      } catch (e) {}
+      this.screenAudioSourceNode = null;
+    }
+    this.screenAudioStream = null;
+  }
+
+  /**
    * Decodes incoming remote PCM audio packets with multi-voice mixer and adaptive jitter buffer
    */
   public playRemoteAudioChunk(
@@ -393,6 +489,7 @@ export class AudioManager {
    */
   public stop() {
     this.stopMicTest();
+    this.stopScreenAudioCapture();
 
     if (this.vadIntervalId) {
       clearInterval(this.vadIntervalId);
