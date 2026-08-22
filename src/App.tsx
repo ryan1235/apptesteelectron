@@ -260,21 +260,54 @@ export const App: React.FC = () => {
           const rawParticipants = Array.isArray(msg.participants) ? msg.participants : [];
           const myId = msg.yourUserId || currentUserIdRef.current;
 
-          const mapped: Participant[] = rawParticipants.map((p: any) => {
-            const isLocal = p.userId === myId || (p.name && p.name.toLowerCase() === configRef.current.userName.toLowerCase());
-            return {
-              id: p.userId || p.id,
-              name: p.name || 'Participante',
+          // Deduplicate participants by clientUserId or normalized name
+          const seen = new Set<string>();
+          const deduplicatedList: Participant[] = [];
+
+          for (const p of rawParticipants) {
+            const pName = p.name || 'Participante';
+            const pClientUserId = p.clientUserId || p.userId || p.id;
+            const key = pClientUserId ? `id:${pClientUserId}` : `name:${pName.toLowerCase()}`;
+
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            const isLocal =
+              p.userId === myId ||
+              (p.clientUserId && p.clientUserId === configRef.current.clientUserId) ||
+              (pName && pName.toLowerCase() === configRef.current.userName.toLowerCase());
+
+            deduplicatedList.push({
+              id: isLocal ? (currentUserIdRef.current || p.userId || p.id) : (p.userId || p.id),
+              name: isLocal ? configRef.current.userName : pName,
               avatarUrl: p.avatarUrl || null,
               micOn: isLocal ? !isMicMuted : Boolean(p.micOn),
               isSpeaking: Boolean(p.isSpeaking),
               isScreenSharing: Boolean(p.isSharing || p.isScreenSharing),
               joinedAt: p.joinedAt,
               volume: 100,
-            };
-          });
+            });
+          }
 
-          setParticipants(mapped);
+          // Ensure local participant is always present exactly once
+          const hasSelf = deduplicatedList.some(
+            (p) =>
+              p.id === currentUserIdRef.current ||
+              p.name.toLowerCase() === configRef.current.userName.toLowerCase()
+          );
+          if (!hasSelf) {
+            deduplicatedList.unshift({
+              id: currentUserIdRef.current || 'usr-local',
+              name: configRef.current.userName || 'Você',
+              avatarUrl: configRef.current.avatarUrl || null,
+              micOn: !isMicMuted,
+              isSpeaking: false,
+              isScreenSharing: isScreenSharing,
+              volume: 100,
+            });
+          }
+
+          setParticipants(deduplicatedList);
 
           if (msg.activeScreenShare || msg.activePresenter) {
             const share = msg.activeScreenShare || msg.activePresenter;
@@ -294,11 +327,18 @@ export const App: React.FC = () => {
           const userObj = msg.participant || msg.user || msg;
           const newUserId = userObj.userId || userObj.id || msg.userId || 'usr-' + Math.random().toString(36).substring(2, 7);
           const newUserName = userObj.name || msg.userName || 'Participante';
+          const newClientUserId = userObj.clientUserId || msg.clientUserId;
+
+          const isLocal =
+            newUserId === currentUserIdRef.current ||
+            (newClientUserId && newClientUserId === configRef.current.clientUserId) ||
+            newUserName.toLowerCase() === configRef.current.userName.toLowerCase();
+
           const newParticipant: Participant = {
-            id: newUserId,
-            name: newUserName,
+            id: isLocal ? currentUserIdRef.current : newUserId,
+            name: isLocal ? configRef.current.userName : newUserName,
             avatarUrl: userObj.avatarUrl || msg.avatarUrl || null,
-            micOn: Boolean(userObj.micOn),
+            micOn: isLocal ? !isMicMuted : Boolean(userObj.micOn),
             isSpeaking: Boolean(userObj.isSpeaking),
             isScreenSharing: Boolean(userObj.isSharing || userObj.isScreenSharing),
             volume: 100,
@@ -306,7 +346,9 @@ export const App: React.FC = () => {
 
           setParticipants((prev) => {
             const existingIndex = prev.findIndex(
-              (p) => p.id === newUserId || (p.name && p.name.toLowerCase() === newUserName.toLowerCase())
+              (p) =>
+                p.id === newParticipant.id ||
+                p.name.toLowerCase() === newParticipant.name.toLowerCase()
             );
             if (existingIndex >= 0) {
               const updated = [...prev];
@@ -321,6 +363,17 @@ export const App: React.FC = () => {
         case 'user_left': {
           const leftId = msg.userId || (msg.user && msg.user.id);
           const leftName = msg.userName || (msg.user && msg.user.name);
+          const leftClientUserId = msg.clientUserId || (msg.user && msg.user.clientUserId);
+
+          // Don't remove self on stale user_left from a previous socket connection
+          if (
+            leftId === currentUserIdRef.current ||
+            (leftClientUserId && leftClientUserId === configRef.current.clientUserId) ||
+            (leftName && leftName.toLowerCase() === configRef.current.userName.toLowerCase())
+          ) {
+            break;
+          }
+
           if (leftId || leftName) {
             setParticipants((prev) =>
               prev.filter(

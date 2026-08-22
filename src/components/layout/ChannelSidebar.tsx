@@ -172,7 +172,9 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
                 {/* Sub-list of Connected Online Users in the Active Channel (Discord Style) */}
                 {isActive && activeRoomParticipants.length > 0 && (
                   <div className="pl-6 pr-1 py-1 space-y-1">
-                    {activeRoomParticipants.map((participant) => (
+                    {activeRoomParticipants
+                      .filter((p, idx, arr) => arr.findIndex((x) => (x.name || '').toLowerCase() === (p.name || '').toLowerCase() || x.id === p.id) === idx)
+                      .map((participant) => (
                       <div
                         key={participant.id}
                         className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-[#35373c]/40 text-xs transition-colors"
