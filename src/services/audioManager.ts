@@ -23,8 +23,8 @@ export class AudioManager {
   private onSpeakingChange: OnSpeakingChangeCallback | null = null;
   private onVolumeLevel: OnVolumeLevelCallback | null = null;
 
-  // Remote audio playback queue per user/stream
-  private nextPlayTime: number = 0;
+  // Remote audio playback queues per user/stream (Multi-Voice Mixer)
+  private userPlayTimes: Map<string, number> = new Map();
   private userVolumes: Map<string, number> = new Map(); // userId -> 0..100
   private screenAudioVolume: number = 100;
 
@@ -272,14 +272,17 @@ export class AudioManager {
     sourceNode.connect(gainNode);
     gainNode.connect(this.audioCtx.destination);
 
-    // Audio scheduling with jitter buffer management
+    // Audio scheduling with jitter buffer management per user/source
+    const streamKey = userId || (isScreenAudio ? '__screen__' : '__main__');
     const currentTime = this.audioCtx.currentTime;
-    if (this.nextPlayTime < currentTime) {
-      this.nextPlayTime = currentTime + 0.01; // small 10ms safety buffer
+    let streamNextTime = this.userPlayTimes.get(streamKey) ?? 0;
+
+    if (streamNextTime < currentTime) {
+      streamNextTime = currentTime + 0.015; // 15ms adaptive jitter safety buffer
     }
 
-    sourceNode.start(this.nextPlayTime);
-    this.nextPlayTime += audioBuffer.duration;
+    sourceNode.start(streamNextTime);
+    this.userPlayTimes.set(streamKey, streamNextTime + audioBuffer.duration);
   }
 
   /**
