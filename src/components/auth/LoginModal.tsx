@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Sparkles,
   User,
   Radio,
-  KeyRound,
   ArrowRight,
   Check,
 } from 'lucide-react';
@@ -12,8 +10,7 @@ import { AppConfig } from '../../types/live-room';
 interface LoginModalProps {
   isOpen: boolean;
   config: AppConfig;
-  authError?: string | null;
-  onLogin: (userName: string, avatarUrl: string, jwtToken: string) => void;
+  onLogin: (userName: string, avatarUrl: string) => void;
 }
 
 const PRESET_AVATARS = [
@@ -27,22 +24,15 @@ const PRESET_AVATARS = [
 export const LoginModal: React.FC<LoginModalProps> = ({
   isOpen,
   config,
-  authError,
   onLogin,
 }) => {
   const [userName, setUserName] = useState(config.userName || 'Ryan');
-  const [jwtToken, setJwtToken] = useState(config.jwtToken || '');
   const [selectedAvatar, setSelectedAvatar] = useState<string>(config.avatarUrl || PRESET_AVATARS[0].url);
   const [customAvatar, setCustomAvatar] = useState('');
-  const [error, setError] = useState<string | null>(authError || null);
-
-  useEffect(() => {
-    if (authError) setError(authError);
-  }, [authError]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setUserName(config.userName || 'Ryan');
-    setJwtToken(config.jwtToken || '');
     if (config.avatarUrl) setSelectedAvatar(config.avatarUrl);
   }, [config, isOpen]);
 
@@ -51,17 +41,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userName.trim()) {
-      setError('Por favor, digite seu nome.');
-      return;
-    }
-
-    if (!jwtToken.trim()) {
-      setError('Por favor, cole seu Token JWT do servidor para se conectar.');
+      setError('Por favor, digite seu nome de usuário.');
       return;
     }
 
     const finalAvatar = customAvatar.trim() || selectedAvatar;
-    onLogin(userName.trim(), finalAvatar, jwtToken.trim());
+    onLogin(userName.trim(), finalAvatar);
   };
 
   return (
@@ -73,10 +58,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <Radio size={24} className="animate-pulse" />
           </div>
           <h2 className="text-lg font-extrabold text-white tracking-tight">
-            Entrar no Discord Live Rooms
+            Boas-vindas ao Discord Live Rooms!
           </h2>
           <p className="text-xs text-discord-textMuted mt-0.5">
-            Informe seu nome e cole seu Token JWT para sincronizar as salas.
+            Servidor Aberto • Transmissão 60 FPS • Voz PCM Baixa Latência
           </p>
         </div>
 
@@ -90,7 +75,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           {/* Nome de Usuário */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-discord-textMuted mb-1.5">
-              Seu Nome de Usuário <span className="text-discord-red">*</span>
+              Como devemos te chamar? <span className="text-discord-red">*</span>
             </label>
             <div className="relative">
               <User size={15} className="absolute left-3 top-2.5 text-discord-textMuted" />
@@ -105,27 +90,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 }}
                 placeholder="Ex: Ryan"
                 className="w-full bg-[#1e1f22] text-xs text-discord-textNormal rounded-lg pl-9 pr-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none placeholder-discord-textMuted"
-              />
-            </div>
-          </div>
-
-          {/* Token JWT */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-discord-textMuted mb-1.5">
-              Token JWT (Bearer Auth) <span className="text-discord-red">*</span>
-            </label>
-            <div className="relative">
-              <KeyRound size={15} className="absolute left-3 top-2.5 text-discord-textMuted" />
-              <textarea
-                rows={3}
-                required
-                value={jwtToken}
-                onChange={(e) => {
-                  setJwtToken(e.target.value);
-                  setError(null);
-                }}
-                placeholder="Cole aqui o seu JWT Token assinado pelo servidor..."
-                className="w-full bg-[#1e1f22] text-xs text-discord-textNormal rounded-lg pl-9 pr-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none placeholder-discord-textMuted font-mono resize-none"
               />
             </div>
           </div>
@@ -171,7 +135,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               type="submit"
               className="w-full py-2.5 rounded-xl bg-discord-accent hover:bg-discord-accentHover text-white text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-2 group cursor-pointer"
             >
-              <span>Conectar e Entrar</span>
+              <span>Entrar no Servidor</span>
               <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
             </button>
           </div>

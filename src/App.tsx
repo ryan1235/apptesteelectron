@@ -500,14 +500,12 @@ export const App: React.FC = () => {
   // Login handler
   const handleLogin = (
     userName: string,
-    avatarUrl: string,
-    jwtToken: string
+    avatarUrl: string
   ) => {
     const updated: AppConfig = {
       ...config,
       userName,
       avatarUrl,
-      jwtToken: jwtToken.trim(),
     };
 
     localStorage.setItem('discord_live_rooms_auth_v1', 'true');
@@ -621,7 +619,6 @@ export const App: React.FC = () => {
       <LoginModal
         isOpen={isLoginModalOpen}
         config={config}
-        authError={authError}
         onLogin={handleLogin}
       />
 

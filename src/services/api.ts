@@ -31,48 +31,7 @@ export class LiveRoomsApiClient {
   }
 
   /**
-   * Autenticação via Email & Senha (POST /auth/login)
-   */
-  public async login(email: string, password: string): Promise<{ token: string; user?: any }> {
-    const res = await fetch(`${this.config.apiUrl}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error || data.message || `Erro no login: ${res.status}`);
-    }
-
-    const token = data.token || data.accessToken || data.jwt || (data.user && data.user.token);
-    if (!token) {
-      throw new Error('Servidor não retornou um token JWT válido.');
-    }
-
-    return { token, user: data.user };
-  }
-
-  /**
-   * Registro de nova conta (POST /auth/register)
-   */
-  public async register(name: string, email: string, password: string): Promise<{ message: string; user?: any }> {
-    const res = await fetch(`${this.config.apiUrl}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error || data.message || `Erro no registro: ${res.status}`);
-    }
-
-    return data;
-  }
-
-  /**
-   * 1. Listar Salas Ao Vivo
+   * 1. Listar Salas Ao Vivo (Totalmente Aberto / Sem JWT)
    * GET /live-rooms
    */
   public async getLiveRooms(): Promise<RoomSummary[]> {
@@ -83,11 +42,7 @@ export class LiveRoomsApiClient {
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        if (res.status === 401) {
-          console.warn('⚠️ Token JWT inválido ou não fornecido para /live-rooms:', errorData.error || '401 Unauthorized');
-        }
-        throw new Error(errorData.error || `Erro ao listar salas: ${res.status} ${res.statusText}`);
+        throw new Error(`Erro ao listar salas: ${res.status} ${res.statusText}`);
       }
 
       const data = await res.json();
@@ -96,8 +51,8 @@ export class LiveRoomsApiClient {
       }
       return [];
     } catch (err: any) {
-      // Re-throw if it's an auth error or log for UI toast
-      throw err;
+      console.warn('Erro ao obter salas ao vivo:', err.message);
+      return [];
     }
   }
 
@@ -106,20 +61,26 @@ export class LiveRoomsApiClient {
    * POST /live-rooms
    */
   public async createRoom(payload: CreateRoomPayload): Promise<RoomDetails> {
+    const body: Record<string, any> = {
+      title: payload.title.trim(),
+      description: payload.description ? payload.description.trim() : undefined,
+      maxParticipants: payload.maxParticipants || 16,
+      authorName: this.config.userName || 'Visitante',
+    };
+
+    if (payload.password && payload.password.trim().length > 0) {
+      body.password = payload.password.trim();
+    }
+
     const res = await fetch(`${this.config.apiUrl}/live-rooms`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({
-        title: payload.title,
-        description: payload.description || undefined,
-        password: payload.password || undefined,
-        maxParticipants: payload.maxParticipants || 16,
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.error || `Erro ao criar sala no servidor (${res.status}): ${res.statusText}`);
+      throw new Error(data.error || `Erro ao criar sala no servidor (${res.status})`);
     }
 
     return {
@@ -136,7 +97,7 @@ export class LiveRoomsApiClient {
     const res = await fetch(`${this.config.apiUrl}/live-rooms/${roomId}/verify-password`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password: password.trim() }),
     });
 
     const data = await res.json().catch(() => ({}));
