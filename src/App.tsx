@@ -111,6 +111,12 @@ export const App: React.FC = () => {
   currentUserIdRef.current = currentUserId;
   const configRef = useRef<AppConfig>(config);
   configRef.current = config;
+  const isScreenSharingRef = useRef<boolean>(isScreenSharing);
+  isScreenSharingRef.current = isScreenSharing;
+  const localScreenStreamRef = useRef<MediaStream | null>(localScreenStream);
+  localScreenStreamRef.current = localScreenStream;
+  const activeProfileRef = useRef<QualityProfile>(activeProfile);
+  activeProfileRef.current = activeProfile;
 
   // Initialize Services & Handlers
   useEffect(() => {
@@ -320,6 +326,26 @@ export const App: React.FC = () => {
             });
           } else {
             setActivePresenter(null);
+          }
+
+          // If local user is already sharing their screen, resume stream transmission for the newly confirmed room
+          if (isScreenSharingRef.current && localScreenStreamRef.current && msg.roomId) {
+            try {
+              videoCodecsRef.current.stopEncoding();
+              videoCodecsRef.current.startEncoding(
+                localScreenStreamRef.current,
+                msg.roomId,
+                activeProfileRef.current
+              );
+              wsClientRef.current.sendJson({
+                type: 'start_screen_share',
+                roomId: msg.roomId,
+                qualityProfile: activeProfileRef.current,
+                clientUserId: configRef.current.clientUserId,
+              });
+            } catch (err) {
+              console.warn('Erro ao continuar compartilhamento de tela na sala:', err);
+            }
           }
           break;
         }
@@ -632,22 +658,6 @@ export const App: React.FC = () => {
         userName: config.userName,
         avatarUrl: config.avatarUrl || null,
       });
-
-      // Seamless Screen Share Continuity when switching rooms
-      if (isScreenSharing && localScreenStream) {
-        try {
-          await videoCodecsRef.current.stopEncoding();
-          await videoCodecsRef.current.startEncoding(localScreenStream, roomId, activeProfile);
-          wsClientRef.current.sendJson({
-            type: 'start_screen_share',
-            roomId,
-            qualityProfile: activeProfile,
-            clientUserId: config.clientUserId,
-          });
-        } catch (err) {
-          console.warn('Erro ao transferir compartilhamento de tela para nova sala:', err);
-        }
-      }
     } catch (err: any) {
       console.error('Erro ao conectar na sala:', err);
     }

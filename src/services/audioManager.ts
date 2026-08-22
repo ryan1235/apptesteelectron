@@ -152,10 +152,10 @@ export class AudioManager {
       // 5. ScriptProcessor for Noise Gate + PCM Int16 conversion (bufferSize: 2048 samples ~46ms chunk)
       this.scriptProcessorNode = this.audioCtx.createScriptProcessor(2048, 1, 1);
 
-      this.scriptProcessorNode.onaudioprocess = (e) => {
-        if (this.isMicMuted || !this.roomId) return;
+      this.scriptProcessorNode.onaudioprocess = (audioProcessingEvent) => {
+        if (!this.roomId || this.isMicMuted) return;
 
-        const inputBuffer = e.inputBuffer.getChannelData(0);
+        const inputBuffer = audioProcessingEvent.inputBuffer.getChannelData(0);
 
         // Calculate chunk RMS for Noise Gate threshold
         let sum = 0;
@@ -221,7 +221,7 @@ export class AudioManager {
     const buffer = new Uint8Array(this.analyserNode?.frequencyBinCount || 256);
 
     this.vadIntervalId = setInterval(() => {
-      if (!this.analyserNode || this.isMicMuted) {
+      if (!this.analyserNode || this.isMicMuted || !this.roomId) {
         if (this.isSpeaking) {
           this.isSpeaking = false;
           this.onSpeakingChange?.(false);
