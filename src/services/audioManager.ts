@@ -107,7 +107,7 @@ export class AudioManager {
       if (!this.audioCtx) {
         const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
         this.audioCtx = new AudioCtxClass({
-          sampleRate: 44100, // Standard 44.1kHz PCM voice rate
+          sampleRate: 48000, // Studio 48kHz PCM standard
           latencyHint: 'interactive',
         });
       }
@@ -292,7 +292,7 @@ export class AudioManager {
     if (!this.audioCtx) {
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       this.audioCtx = new AudioCtxClass({
-        sampleRate: 44100,
+        sampleRate: 48000,
         latencyHint: 'interactive',
       });
     }
@@ -345,7 +345,7 @@ export class AudioManager {
       this.screenScriptProcessorNode.connect(dummyGain);
       dummyGain.connect(this.audioCtx.destination);
 
-      logger.success('AUDIO', 'Transmissão de áudio da tela (Stereo PCM 44.1kHz) ativada com sucesso!');
+      logger.success('AUDIO', 'Transmissão de áudio da tela (Stereo PCM 48kHz) ativada com sucesso!');
       return true;
     } catch (err) {
       console.warn('Falha ao inicializar captura de áudio da tela:', err);
@@ -384,7 +384,7 @@ export class AudioManager {
     if (!this.audioCtx) {
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       this.audioCtx = new AudioCtxClass({
-        sampleRate: 44100,
+        sampleRate: 48000,
         latencyHint: 'interactive',
       });
     }
@@ -441,9 +441,12 @@ export class AudioManager {
     const currentTime = this.audioCtx.currentTime;
     let streamNextTime = this.userPlayTimes.get(streamKey) ?? 0;
 
-    // Clamp latency if behind or if drifted ahead by more than 80ms
-    if (streamNextTime < currentTime || streamNextTime > currentTime + 0.08) {
-      streamNextTime = currentTime + 0.01; // Real-time 10ms target
+    // Smooth playback queue: never overlap chunks (which causes repeated echo)
+    if (streamNextTime < currentTime) {
+      streamNextTime = currentTime + 0.005;
+    } else if (streamNextTime > currentTime + 0.25) {
+      // If queue drifted too far (>250ms), resync without building huge latency
+      streamNextTime = currentTime + 0.01;
     }
 
     sourceNode.start(streamNextTime);

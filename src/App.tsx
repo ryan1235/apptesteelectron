@@ -189,6 +189,10 @@ export const App: React.FC = () => {
         video.handleIncomingVideoPacket(header.payload, header.isKeyframe, header.timestampUs);
       },
       onBinaryAudio: (packetType: PacketType, payload: ArrayBuffer, senderId?: string) => {
+        // If local user is presenting/sharing screen, ignore incoming SCREEN_AUDIO_PCM to prevent echo feedback loop
+        if (packetType === PacketType.SCREEN_AUDIO_PCM && isScreenSharingRef.current) {
+          return;
+        }
         audio.playRemoteAudioChunk(packetType, payload, senderId);
       },
       onConnectionStatus: (status) => {
