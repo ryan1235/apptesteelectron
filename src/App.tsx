@@ -203,86 +203,148 @@ export const App: React.FC = () => {
 
   // Handle incoming JSON events from WebSocket
   const handleServerRxJson = useCallback((msg: any) => {
-    switch (msg.type) {
-      case 'connected':
-        if (msg.userId) setCurrentUserId(msg.userId);
-        break;
+    if (!msg || typeof msg !== 'object') return;
 
-      case 'room_state':
-        if (msg.participants) {
-          setParticipants(msg.participants);
+    try {
+      switch (msg.type) {
+        case 'connected':
+          if (msg.userId) setCurrentUserId(msg.userId);
+          break;
+
+        case 'room_state':
+          if (Array.isArray(msg.participants)) {
+            setParticipants(
+              msg.participants.map((p: any) => ({
+                id: p.id || p.userId || 'usr-' + Math.random().toString(36).substring(2, 7),
+                name: p.name || p.userName || 'Participante',
+                avatarUrl: p.avatarUrl || null,
+                micOn: p.micOn !== undefined ? Boolean(p.micOn) : true,
+                isSpeaking: Boolean(p.isSpeaking),
+                isScreenSharing: Boolean(p.isScreenSharing || p.isPresenter),
+                isHost: Boolean(p.isHost),
+                volume: p.volume ?? 100,
+              }))
+            );
+          }
+          if (msg.activePresenter !== undefined) {
+            setActivePresenter(msg.activePresenter);
+          }
+          break;
+
+        case 'user_joined': {
+          const userObj = msg.user || msg;
+          const newUserId = userObj.id || msg.userId || 'usr-' + Math.random().toString(36).substring(2, 7);
+          const newUserName = userObj.name || msg.userName || 'Participante';
+          const newParticipant: Participant = {
+            id: newUserId,
+            name: newUserName,
+            avatarUrl: userObj.avatarUrl || msg.avatarUrl || null,
+            micOn: userObj.micOn !== undefined ? Boolean(userObj.micOn) : true,
+            isSpeaking: false,
+            isScreenSharing: Boolean(userObj.isScreenSharing || userObj.isPresenter),
+            volume: 100,
+          };
+
+          setParticipants((prev) => {
+            const existingIndex = prev.findIndex(
+              (p) => p.id === newUserId || (p.name && p.name.toLowerCase() === newUserName.toLowerCase())
+            );
+            if (existingIndex >= 0) {
+              const updated = [...prev];
+              updated[existingIndex] = { ...updated[existingIndex], ...newParticipant };
+              return updated;
+            }
+            return [...prev, newParticipant];
+          });
+          break;
         }
-        if (msg.activePresenter !== undefined) {
-          setActivePresenter(msg.activePresenter);
+
+        case 'user_left': {
+          const leftId = msg.userId || (msg.user && msg.user.id);
+          const leftName = msg.userName || (msg.user && msg.user.name);
+          if (leftId || leftName) {
+            setParticipants((prev) =>
+              prev.filter(
+                (p) => p.id !== leftId && (!leftName || p.name.toLowerCase() !== leftName.toLowerCase())
+              )
+            );
+          }
+          if (activePresenter?.userId === leftId) {
+            setActivePresenter(null);
+          }
+          break;
         }
-        break;
 
-      case 'user_joined':
-        setParticipants((prev) => {
-          if (prev.some((p) => p.id === msg.user.id)) return prev;
-          return [...prev, msg.user];
-        });
-        break;
+        case 'screen_share_started':
+          setActivePresenter({
+            userId: msg.presenterId || msg.userId || 'presenter',
+            userName: msg.presenterName || msg.userName || 'Apresentador',
+            qualityProfile: msg.qualityProfile || 'SMOOTH_60FPS',
+            startedAt: new Date().toISOString(),
+          });
+          break;
 
-      case 'user_left':
-        setParticipants((prev) => prev.filter((p) => p.id !== msg.userId));
-        if (activePresenter?.userId === msg.userId) {
-          setActivePresenter(null);
+        case 'screen_share_stopped':
+          if (!msg.presenterId || activePresenter?.userId === msg.presenterId) {
+            setActivePresenter(null);
+          }
+          break;
+
+        case 'mic_updated': {
+          const targetId = msg.userId || (msg.user && msg.user.id);
+          const targetName = msg.userName || (msg.user && msg.user.name);
+          const micOn = msg.micOn !== undefined ? Boolean(msg.micOn) : Boolean(msg.user?.micOn);
+          setParticipants((prev) =>
+            prev.map((p) =>
+              p.id === targetId || (targetName && p.name.toLowerCase() === targetName.toLowerCase())
+                ? { ...p, micOn }
+                : p
+            )
+          );
+          break;
         }
-        break;
 
-      case 'screen_share_started':
-        setActivePresenter({
-          userId: msg.presenterId,
-          userName: msg.presenterName || 'Apresentador',
-          qualityProfile: msg.qualityProfile || 'SMOOTH_60FPS',
-          startedAt: new Date().toISOString(),
-        });
-        break;
-
-      case 'screen_share_stopped':
-        if (activePresenter?.userId === msg.presenterId) {
-          setActivePresenter(null);
+        case 'speaking_updated': {
+          const spkId = msg.userId || (msg.user && msg.user.id);
+          const spkName = msg.userName || (msg.user && msg.user.name);
+          const isSpeaking = Boolean(msg.isSpeaking !== undefined ? msg.isSpeaking : msg.user?.isSpeaking);
+          setParticipants((prev) =>
+            prev.map((p) =>
+              p.id === spkId || (spkName && p.name.toLowerCase() === spkName.toLowerCase())
+                ? { ...p, isSpeaking }
+                : p
+            )
+          );
+          break;
         }
-        break;
 
-      case 'mic_updated':
-        setParticipants((prev) =>
-          prev.map((p) => (p.id === msg.userId ? { ...p, micOn: msg.micOn } : p))
-        );
-        break;
+        case 'chat_message': {
+          const chatMsg: ChatMessage = msg.message || {
+            id: msg.id || 'msg-' + Date.now(),
+            roomId: msg.roomId || '',
+            userId: msg.userId || '',
+            userName: msg.userName || 'Anônimo',
+            avatarUrl: msg.avatarUrl || null,
+            content: msg.content || msg.text || '',
+            createdAt: msg.createdAt || new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, chatMsg]);
+          break;
+        }
 
-      case 'speaking_updated':
-        setParticipants((prev) =>
-          prev.map((p) =>
-            p.id === msg.userId ? { ...p, isSpeaking: msg.isSpeaking } : p
-          )
-        );
-        break;
+        case 'request_keyframe':
+          videoCodecsRef.current.requestKeyFrame();
+          break;
 
-      case 'chat_message':
-        const chatMsg: ChatMessage = msg.message || {
-          id: msg.id || 'msg-' + Date.now(),
-          roomId: msg.roomId || '',
-          userId: msg.userId || '',
-          userName: msg.userName || 'Anônimo',
-          avatarUrl: msg.avatarUrl || null,
-          content: msg.content || msg.text || '',
-          createdAt: msg.createdAt || new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, chatMsg]);
-        break;
-
-      case 'request_keyframe':
-        videoCodecsRef.current.requestKeyFrame();
-        break;
-
-      case 'room_closed':
-        alert('A sala foi encerrada pelo anfitrião.');
-        leaveRoom();
-        break;
+        case 'room_closed':
+          alert('A sala foi encerrada pelo anfitrião.');
+          leaveRoom();
+          break;
+      }
+    } catch (error) {
+      console.error('Erro ao processar mensagem do WebSocket:', error);
     }
-  }, [activePresenter]);
+  }, [activePresenter, currentUserId, config.userName]);
 
   // Memory map of known passwords for rooms created or unlocked by the user
   const knownRoomPasswords = useRef<Map<string, string>>(new Map());
@@ -348,7 +410,27 @@ export const App: React.FC = () => {
 
       // Start Audio & Voice Chat
       audioManagerRef.current.setRoomId(roomId);
-      await audioManagerRef.current.startMicrophone().catch(console.warn);
+      audioManagerRef.current.setMuted(isMicMuted);
+      if (!isMicMuted) {
+        await audioManagerRef.current.startMicrophone().catch(console.warn);
+      }
+
+      // Add local participant
+      const selfParticipant: Participant = {
+        id: currentUserId || 'usr-local',
+        name: config.userName || 'Você',
+        avatarUrl: config.avatarUrl || null,
+        micOn: !isMicMuted,
+        isSpeaking: false,
+        isScreenSharing: isScreenSharing,
+        volume: 100,
+      };
+      setParticipants((prev) => {
+        if (prev.some((p) => p.name === selfParticipant.name || p.id === selfParticipant.id)) {
+          return prev;
+        }
+        return [selfParticipant, ...prev];
+      });
 
       // Join via WebSocket
       wsClientRef.current.sendJson({
@@ -408,16 +490,29 @@ export const App: React.FC = () => {
   };
 
   // Toggle Microphone
-  const handleToggleMic = () => {
+  const handleToggleMic = async () => {
     const newMuted = !isMicMuted;
     setIsMicMuted(newMuted);
     audioManagerRef.current.setMuted(newMuted);
+    if (!newMuted) {
+      await audioManagerRef.current.startMicrophone().catch((err) => {
+        console.warn('Erro ao ligar microfone:', err);
+      });
+    }
+
     if (activeRoom) {
       wsClientRef.current.sendJson({
         type: 'toggle_mic',
         roomId: activeRoom.id,
         micOn: !newMuted,
       });
+      setParticipants((prev) =>
+        prev.map((p) =>
+          p.id === currentUserId || (p.name && p.name.toLowerCase() === config.userName.toLowerCase())
+            ? { ...p, micOn: !newMuted }
+            : p
+        )
+      );
     }
   };
 

@@ -73,9 +73,9 @@ export const ParticipantGrid: React.FC<ParticipantGridProps> = ({
                   }`}
                 >
                   {p.avatarUrl ? (
-                    <img src={p.avatarUrl} alt={p.name} className="w-full h-full object-cover" />
+                    <img src={p.avatarUrl} alt={p.name || ''} className="w-full h-full object-cover" />
                   ) : (
-                    p.name.substring(0, 2).toUpperCase()
+                    (p.name || 'U').substring(0, 2).toUpperCase()
                   )}
                 </div>
 

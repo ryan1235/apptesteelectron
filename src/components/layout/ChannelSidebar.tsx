@@ -188,11 +188,11 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
                             {participant.avatarUrl ? (
                               <img src={participant.avatarUrl} alt="" className="w-full h-full object-cover" />
                             ) : (
-                              participant.name.substring(0, 2).toUpperCase()
+                              (participant.name || 'U').substring(0, 2).toUpperCase()
                             )}
                           </div>
                           <span className="text-[11px] text-discord-textHeader truncate font-medium">
-                            {participant.name}
+                            {participant.name || 'Usuário'}
                           </span>
                         </div>
 
