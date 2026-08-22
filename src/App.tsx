@@ -347,6 +347,75 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  // Hidden elements for robust high-performance In-Game Overlay PIP streaming
+  const pipLocalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pipCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (!pipLocalVideoRef.current && typeof document !== 'undefined') {
+      const vid = document.createElement('video');
+      vid.autoplay = true;
+      vid.muted = true;
+      vid.playsInline = true;
+      pipLocalVideoRef.current = vid;
+    }
+    if (!pipCanvasRef.current && typeof document !== 'undefined') {
+      const can = document.createElement('canvas');
+      can.width = 480;
+      can.height = 270;
+      pipCanvasRef.current = can;
+    }
+  }, []);
+
+  // Update hidden video stream when local screen share changes
+  useEffect(() => {
+    if (pipLocalVideoRef.current) {
+      if (localScreenStream) {
+        pipLocalVideoRef.current.srcObject = localScreenStream;
+        pipLocalVideoRef.current.play().catch(() => {});
+      } else {
+        pipLocalVideoRef.current.srcObject = null;
+      }
+    }
+  }, [localScreenStream]);
+
+  // High-performance 30 FPS Stream to In-Game Overlay PIP
+  useEffect(() => {
+    if (!window.electronAPI?.sendOverlayVideoFrame) return;
+
+    const interval = setInterval(() => {
+      const isSharing = isScreenSharingRef.current;
+      const presenter = activePresenter;
+
+      if (!isSharing && !presenter) {
+        return;
+      }
+
+      const canvas = pipCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) return;
+
+      if (isSharing && pipLocalVideoRef.current && pipLocalVideoRef.current.videoWidth > 0) {
+        // Render local screen share video to PIP canvas
+        ctx.drawImage(pipLocalVideoRef.current, 0, 0, canvas.width, canvas.height);
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          window.electronAPI?.sendOverlayVideoFrame(dataUrl);
+        } catch (e) {}
+      } else if (!isSharing && presenter && canvasRef.current && canvasRef.current.width > 0) {
+        // Render remote WebCodecs canvas to PIP canvas
+        ctx.drawImage(canvasRef.current, 0, 0, canvas.width, canvas.height);
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          window.electronAPI?.sendOverlayVideoFrame(dataUrl);
+        } catch (e) {}
+      }
+    }, 33); // 30 FPS smooth in-game PIP stream
+
+    return () => clearInterval(interval);
+  }, [activePresenter, isScreenSharing]);
+
   // Synchronize In-Game Overlay state in real time
   useEffect(() => {
     if (window.electronAPI?.updateOverlayState) {
@@ -378,6 +447,13 @@ export const App: React.FC = () => {
               avatarUrl: activePresenter.avatarUrl,
               qualityProfile: activePresenter.qualityProfile,
             }
+          : isScreenSharing
+          ? {
+              userId: currentUserId || config.clientUserId,
+              userName: config.userName,
+              avatarUrl: config.avatarUrl,
+              qualityProfile: activeProfile,
+            }
           : null,
         voicePosition: config.overlayVoicePosition || 'top-left',
         pipPosition: config.overlayPipPosition || 'top-right',
@@ -388,7 +464,7 @@ export const App: React.FC = () => {
         showPip: config.overlayShowPip ?? true,
       });
     }
-  }, [activeRoom, participants, messages, isMicMuted, isDeafened, activePresenter, config]);
+  }, [activeRoom, participants, messages, isMicMuted, isDeafened, activePresenter, isScreenSharing, activeProfile, config]);
 
   // Update canvas target when entering room
   useEffect(() => {

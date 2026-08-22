@@ -43,7 +43,8 @@ export const InGameOverlay: React.FC = () => {
   });
 
   const [isInteractive, setIsInteractive] = useState<boolean>(false);
-  const [latestFrameUrl, setLatestFrameUrl] = useState<string | null>(null);
+  const [hasFrame, setHasFrame] = useState<boolean>(false);
+  const pipImgRef = useRef<HTMLImageElement>(null);
 
   // Load saved preferences from localStorage on mount
   useEffect(() => {
@@ -85,7 +86,10 @@ export const InGameOverlay: React.FC = () => {
       });
 
       const unsubFrame = window.electronAPI.onOverlayVideoFrame?.((frameData) => {
-        setLatestFrameUrl(frameData);
+        if (pipImgRef.current) {
+          pipImgRef.current.src = frameData;
+        }
+        setHasFrame(true);
       });
 
       const unsubShortOverlay = window.electronAPI.onGlobalToggleOverlay?.(() => {
@@ -369,13 +373,12 @@ export const InGameOverlay: React.FC = () => {
           <div
             className={`relative ${pipDimensions} rounded-xl overflow-hidden bg-black/90 border-2 border-discord-accent/60 shadow-2xl backdrop-blur-md group pointer-events-auto`}
           >
-            {latestFrameUrl ? (
-              <img
-                src={latestFrameUrl}
-                alt="Live Stream PIP"
-                className="w-full h-full object-contain bg-black"
-              />
-            ) : (
+            <img
+              ref={pipImgRef}
+              alt="Live Stream PIP"
+              className={`w-full h-full object-contain bg-black ${hasFrame ? 'block' : 'hidden'}`}
+            />
+            {!hasFrame && (
               <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-discord-textMuted text-xs">
                 <Monitor size={28} className="text-discord-accent animate-pulse" />
                 <span className="font-semibold text-[11px] text-white">
