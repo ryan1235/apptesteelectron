@@ -1,5 +1,6 @@
 import { PacketType, AppConfig } from '../types/live-room';
 import { encodeBinaryPacket, decodeBinaryPacket } from './binaryProtocol';
+import { logger } from './logger';
 
 export type OnAudioPacketCallback = (packet: ArrayBuffer) => void;
 export type OnSpeakingChangeCallback = (isSpeaking: boolean) => void;
@@ -107,6 +108,7 @@ export class AudioManager {
 
       this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
       this.micSourceNode = this.audioCtx.createMediaStreamSource(this.micStream);
+      logger.success('AUDIO', `Microfone ativado com sucesso (Taxa: ${this.audioCtx.sampleRate} Hz, AEC: ${this.config.echoCancellation})`);
 
       // Analyser Node for VAD & UI meter
       this.analyserNode = this.audioCtx.createAnalyser();

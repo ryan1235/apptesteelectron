@@ -1,17 +1,17 @@
 import {
-  AppConfig,
   ClientTxMessage,
   ServerRxMessage,
   PacketType,
   BinaryHeader,
+  AppConfig,
   Participant,
-  QualityProfile,
 } from '../types/live-room';
 import { decodeBinaryPacket } from './binaryProtocol';
+import { logger } from './logger';
 
 export type OnJsonMessageCallback = (msg: ServerRxMessage) => void;
 export type OnBinaryVideoCallback = (header: BinaryHeader) => void;
-export type OnBinaryAudioCallback = (packetType: PacketType, payload: Uint8Array, userId?: string) => void;
+export type OnBinaryAudioCallback = (packetType: PacketType, payload: ArrayBuffer, senderId?: string) => void;
 export type OnConnectionStatusCallback = (status: 'connected' | 'connecting' | 'disconnected' | 'mock') => void;
 
 export class LiveRoomWebSocketClient {
@@ -58,17 +58,19 @@ export class LiveRoomWebSocketClient {
 
     this.isExplicitlyClosed = false;
     this.onConnectionStatus?.('connecting');
+    logger.info('WS-TX', `Conectando ao WebSocket: ${this.config.wsUrl}`);
 
     try {
       const url = new URL(this.config.wsUrl);
-      if (this.config.jwtToken) {
-        url.searchParams.set('token', this.config.jwtToken);
+      if (this.config.jwtToken && this.config.jwtToken.trim().length > 0) {
+        url.searchParams.set('token', this.config.jwtToken.trim());
       }
 
       this.ws = new WebSocket(url.toString());
       this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
+        logger.success('WS-RX', `WebSocket conectado com sucesso em ${this.config.wsUrl}`);
         this.onConnectionStatus?.('connected');
         this.startPingLoop();
       };
@@ -77,13 +79,17 @@ export class LiveRoomWebSocketClient {
         if (typeof event.data === 'string') {
           try {
             const parsed: ServerRxMessage = JSON.parse(event.data);
+            logger.info('WS-RX', `[JSON] ${(parsed as any).type || 'evento'}`, parsed);
             this.onJsonMessage?.(parsed);
           } catch (e) {
-            console.error('Failed to parse WebSocket JSON:', e, event.data);
+            logger.error('WS-RX', 'Falha ao processar JSON do WebSocket:', event.data);
           }
         } else if (event.data instanceof ArrayBuffer) {
           const binaryPacket = decodeBinaryPacket(event.data);
-          if (!binaryPacket) return;
+          if (!binaryPacket) {
+            logger.warn('WS-RX', `Recebido buffer binário inválido (${event.data.byteLength} bytes)`);
+            return;
+          }
 
           if (binaryPacket.packetType === PacketType.VIDEO_GPU) {
             this.onBinaryVideo?.(binaryPacket);
@@ -96,29 +102,31 @@ export class LiveRoomWebSocketClient {
         }
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (ev) => {
         this.stopPingLoop();
         this.onConnectionStatus?.('disconnected');
+        logger.warn('WS-RX', `WebSocket desconectado (Código: ${ev.code}, Razão: ${ev.reason || 'Nenhuma'})`);
         if (!this.isExplicitlyClosed) {
           // Schedule auto-reconnect
           this.reconnectTimeoutId = setTimeout(() => {
+            logger.info('WS-TX', 'Tentando reconectar WebSocket...');
             this.connect();
           }, 3000);
         }
       };
 
       this.ws.onerror = (err) => {
-        console.warn('WebSocket error, switching to mock simulator fallback if necessary:', err);
+        logger.error('WS-RX', 'Erro de conexão WebSocket:', err);
       };
-    } catch (e) {
-      console.warn('WebSocket connection error, starting mock simulator fallback:', e);
+    } catch (e: any) {
+      logger.error('WS-RX', 'Exceção ao instanciar WebSocket:', e.message);
       this.initMockConnection();
     }
   }
 
   private initMockConnection() {
     this.onConnectionStatus?.('mock');
-    // Dispatch initial mock connected event
+    logger.info('SYSTEM', 'Modo de simulação local / mock ativado');
     setTimeout(() => {
       this.onJsonMessage?.({
         type: 'connected',
@@ -132,7 +140,7 @@ export class LiveRoomWebSocketClient {
     this.stopPingLoop();
     this.pingIntervalId = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        // Send ping or telemetry if needed
+        // Ping
       }
     }, 15000);
   }
@@ -145,6 +153,7 @@ export class LiveRoomWebSocketClient {
   }
 
   public sendJson(message: ClientTxMessage) {
+    logger.info('WS-TX', `[JSON] ${(message as any).type}`, message);
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
       return;
@@ -182,14 +191,6 @@ export class LiveRoomWebSocketClient {
             isSpeaking: false,
             isScreenSharing: false,
           },
-          {
-            id: 'usr-789',
-            name: 'Lucas GameDev',
-            avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&q=80',
-            micOn: false,
-            isSpeaking: false,
-            isScreenSharing: false,
-          },
         ];
 
         this.onJsonMessage?.({
@@ -199,7 +200,14 @@ export class LiveRoomWebSocketClient {
         });
         break;
 
+      case 'leave_room':
+        this.currentRoomId = null;
+        break;
+
       case 'toggle_mic':
+        this.mockParticipants = this.mockParticipants.map((p) =>
+          p.id === 'usr-local-id' ? { ...p, micOn: msg.micOn } : p
+        );
         this.onJsonMessage?.({
           type: 'mic_updated',
           userId: 'usr-local-id',
@@ -208,6 +216,9 @@ export class LiveRoomWebSocketClient {
         break;
 
       case 'user_speaking':
+        this.mockParticipants = this.mockParticipants.map((p) =>
+          p.id === 'usr-local-id' ? { ...p, isSpeaking: msg.isSpeaking } : p
+        );
         this.onJsonMessage?.({
           type: 'speaking_updated',
           userId: 'usr-local-id',
@@ -216,6 +227,9 @@ export class LiveRoomWebSocketClient {
         break;
 
       case 'start_screen_share':
+        this.mockParticipants = this.mockParticipants.map((p) =>
+          p.id === 'usr-local-id' ? { ...p, isScreenSharing: true } : p
+        );
         this.onJsonMessage?.({
           type: 'screen_share_started',
           presenterId: 'usr-local-id',
@@ -225,45 +239,28 @@ export class LiveRoomWebSocketClient {
         break;
 
       case 'stop_screen_share':
+        this.mockParticipants = this.mockParticipants.map((p) =>
+          p.id === 'usr-local-id' ? { ...p, isScreenSharing: false } : p
+        );
         this.onJsonMessage?.({
           type: 'screen_share_stopped',
           presenterId: 'usr-local-id',
         });
-        break;
-
-      case 'chat_message':
-        this.onJsonMessage?.({
-          type: 'chat_message',
-          message: {
-            id: 'msg-' + Date.now(),
-            roomId: msg.roomId,
-            userId: 'usr-local-id',
-            userName: this.config.userName,
-            avatarUrl: this.config.avatarUrl || null,
-            content: msg.text,
-            createdAt: new Date().toISOString(),
-          },
-        });
-        break;
-
-      case 'leave_room':
-        this.currentRoomId = null;
-        this.mockParticipants = [];
         break;
     }
   }
 
   public disconnect() {
     this.isExplicitlyClosed = true;
-    this.stopPingLoop();
     if (this.reconnectTimeoutId) {
       clearTimeout(this.reconnectTimeoutId);
       this.reconnectTimeoutId = null;
     }
+    this.stopPingLoop();
     if (this.ws) {
+      logger.info('WS-TX', 'Fechando conexão do WebSocket.');
       this.ws.close();
       this.ws = null;
     }
-    this.onConnectionStatus?.('disconnected');
   }
 }

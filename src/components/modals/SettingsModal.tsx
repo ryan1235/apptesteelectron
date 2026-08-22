@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Server,
@@ -11,8 +11,14 @@ import {
   Sliders,
   Sparkles,
   Info,
+  Terminal,
+  Copy,
+  Trash2,
+  Check,
+  RefreshCw,
 } from 'lucide-react';
 import { AppConfig } from '../../types/live-room';
+import { logger, LogEntry, LogCategory } from '../../services/logger';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,7 +28,7 @@ interface SettingsModalProps {
   onSaveConfig: (config: AppConfig) => void;
 }
 
-type TabType = 'connection' | 'audio' | 'loopback' | 'video';
+type TabType = 'connection' | 'audio' | 'loopback' | 'video' | 'logs';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -36,6 +42,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDeviceInfo[]>([]);
   const [showSavedToast, setShowSavedToast] = useState(false);
+
+  // Logs Tab State
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
+  const [copiedLogs, setCopiedLogs] = useState<boolean>(false);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setFormData({ ...config });
@@ -51,7 +64,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setAudioInputDevices(inputs);
       setAudioOutputDevices(outputs);
     }).catch(console.warn);
+
+    // Subscribe to logger
+    const unsubscribe = logger.subscribe((newLogs) => {
+      setLogs(newLogs);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (activeTab === 'logs' && autoScroll && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs, activeTab, autoScroll]);
 
   if (!isOpen) return null;
 
@@ -64,11 +92,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }, 600);
   };
 
+  const handleCopyLogs = () => {
+    const text = logger.exportAsString();
+    navigator.clipboard.writeText(text);
+    setCopiedLogs(true);
+    setTimeout(() => setCopiedLogs(false), 1500);
+  };
+
+  const handleClearLogs = () => {
+    logger.clear();
+  };
+
+  const filteredLogs = logs.filter((l) => {
+    if (selectedCategory === 'ALL') return true;
+    if (selectedCategory === 'ERROR') return l.level === 'ERROR' || l.category === 'ERROR';
+    return l.category === selectedCategory;
+  });
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="w-full max-w-2xl bg-discord-chat rounded-xl shadow-2xl border border-discord-border flex overflow-hidden h-[540px]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in select-none">
+      <div className="w-full max-w-3xl bg-discord-chat rounded-xl shadow-2xl border border-discord-border flex overflow-hidden h-[580px]">
         {/* Left Settings Sidebar Navigation */}
-        <div className="w-52 bg-discord-channelList p-4 flex flex-col justify-between select-none border-r border-[#1f2023]">
+        <div className="w-56 bg-discord-channelList p-4 flex flex-col justify-between select-none border-r border-[#1f2023]">
           <div className="space-y-1">
             <div className="text-[11px] font-bold uppercase tracking-wider text-discord-textMuted px-2 pb-2">
               Configurações
@@ -83,7 +128,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }`}
             >
               <Server size={16} className={activeTab === 'connection' ? 'text-discord-accent' : ''} />
-              <span>Servidor & .ENV</span>
+              <span>Servidor & Conexão</span>
             </button>
 
             <button
@@ -121,6 +166,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Cpu size={16} className={activeTab === 'video' ? 'text-discord-yellow' : ''} />
               <span>WebCodecs GPU (0xAA)</span>
             </button>
+
+            {/* Diagnostic Logs Tab */}
+            <div className="pt-2 pb-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-discord-textMuted px-2 py-1">
+                Diagnóstico
+              </div>
+              <button
+                onClick={() => setActiveTab('logs')}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
+                  activeTab === 'logs'
+                    ? 'bg-[#35373c] text-white font-bold'
+                    : 'text-discord-textMuted hover:bg-[#35373c]/40 hover:text-discord-textNormal'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Terminal size={16} className={activeTab === 'logs' ? 'text-discord-green' : 'text-discord-textMuted'} />
+                  <span>Logs do App</span>
+                </div>
+                {logs.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 bg-[#1e1f22] text-discord-green font-mono rounded-full">
+                    {logs.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="pt-4 border-t border-[#1f2023] text-[10px] text-discord-textMuted">
@@ -137,6 +207,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {activeTab === 'audio' && 'Configurações de Voz & Sensibilidade'}
               {activeTab === 'loopback' && 'Prevenção de Duplicação & Cancelamento de Eco'}
               {activeTab === 'video' && 'Aceleração GPU & Protocolo Binário (0xAA)'}
+              {activeTab === 'logs' && 'Logs & Diagnóstico em Tempo Real'}
             </h2>
             <button
               onClick={onClose}
@@ -159,7 +230,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="text"
                     value={formData.apiUrl}
                     onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
-                    placeholder="http://localhost:3333"
+                    placeholder="https://archpixel.squareweb.app"
                     className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none font-mono"
                   />
                   <span className="text-[11px] text-discord-textMuted">
@@ -175,7 +246,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="text"
                     value={formData.wsUrl}
                     onChange={(e) => setFormData({ ...formData, wsUrl: e.target.value })}
-                    placeholder="ws://localhost:3333/ws/live-room"
+                    placeholder="wss://archpixel.squareweb.app/ws/live-room"
                     className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none font-mono"
                   />
                   <span className="text-[11px] text-discord-textMuted">
@@ -185,13 +256,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div>
                   <label className="block font-semibold text-discord-textHeader mb-1">
-                    Token JWT Padrão (Bearer Auth)
+                    Token JWT (Opcional - Backend Aberto)
                   </label>
                   <input
                     type="password"
                     value={formData.jwtToken}
                     onChange={(e) => setFormData({ ...formData, jwtToken: e.target.value })}
-                    placeholder="Cole seu JWT token aqui..."
+                    placeholder="Token JWT opcional..."
                     className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none font-mono"
                   />
                 </div>
@@ -221,22 +292,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className="w-full bg-[#1e1f22] text-discord-textNormal rounded px-3 py-2 border border-transparent focus:border-discord-accent focus:outline-none"
                     />
                   </div>
-                </div>
-
-                {/* Mock Mode Toggle */}
-                <div className="p-3 bg-[#2b2d31] rounded-lg flex items-center justify-between border border-[#3f4147]/50 mt-2">
-                  <div>
-                    <div className="font-semibold text-discord-textHeader">Modo Simulação / Mock</div>
-                    <div className="text-[11px] text-discord-textMuted">
-                      Permite testar a interface de salas, voz e vídeo mesmo sem servidor backend rodando.
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.mockMode}
-                    onChange={(e) => setFormData({ ...formData, mockMode: e.target.checked })}
-                    className="w-4 h-4 accent-discord-accent cursor-pointer"
-                  />
                 </div>
               </div>
             )}
@@ -359,21 +414,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     className="w-4 h-4 accent-discord-accent cursor-pointer"
                   />
                 </div>
-
-                <div className="p-3 bg-[#2b2d31] rounded-lg flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-discord-textHeader">Controle Automático de Ganho (AGC)</div>
-                    <div className="text-[11px] text-discord-textMuted">
-                      Equilibra e normaliza o volume da sua voz automaticamente.
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={formData.autoGainControl}
-                    onChange={(e) => setFormData({ ...formData, autoGainControl: e.target.checked })}
-                    className="w-4 h-4 accent-discord-accent cursor-pointer"
-                  />
-                </div>
               </div>
             )}
 
@@ -407,6 +447,104 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="text-purple-400 font-bold">0x03 / 0x04 • CONTROL</div>
                     <div className="text-discord-textMuted">Telemetria & Ping (~30ms)</div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 5: Logs & Diagnóstico em Tempo Real */}
+            {activeTab === 'logs' && (
+              <div className="space-y-3 text-xs animate-fade-in flex flex-col h-full">
+                {/* Action Bar & Category Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-[#1f2023]">
+                  <div className="flex items-center gap-1 overflow-x-auto text-[11px]">
+                    {['ALL', 'WS-RX', 'WS-TX', 'AUDIO', 'VIDEO-GPU', 'ERROR', 'SYSTEM'].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-2 py-1 rounded font-medium transition-colors ${
+                          selectedCategory === cat
+                            ? 'bg-discord-accent text-white'
+                            : 'bg-[#1e1f22] text-discord-textMuted hover:text-white'
+                        }`}
+                      >
+                        {cat === 'ALL' ? 'Todos' : cat}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-[11px] text-discord-textMuted cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={autoScroll}
+                        onChange={(e) => setAutoScroll(e.target.checked)}
+                        className="accent-discord-accent"
+                      />
+                      <span>Auto-scroll</span>
+                    </label>
+
+                    <button
+                      onClick={handleCopyLogs}
+                      className="px-2.5 py-1 rounded bg-[#2b2d31] hover:bg-[#35373c] text-white text-[11px] font-semibold transition-colors flex items-center gap-1 border border-[#3f4147]"
+                      title="Copiar logs completos"
+                    >
+                      {copiedLogs ? <Check size={12} className="text-discord-green" /> : <Copy size={12} />}
+                      <span>{copiedLogs ? 'Copiado!' : 'Copiar'}</span>
+                    </button>
+
+                    <button
+                      onClick={handleClearLogs}
+                      className="p-1 rounded text-discord-textMuted hover:text-discord-red hover:bg-discord-red/10 transition-colors"
+                      title="Limpar logs gravados"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Console Log Terminal Window */}
+                <div
+                  ref={logContainerRef}
+                  className="flex-1 bg-[#111214] rounded-lg p-3 overflow-y-auto font-mono text-[11px] leading-relaxed border border-discord-border space-y-1 select-text max-h-[300px]"
+                >
+                  {filteredLogs.length === 0 ? (
+                    <div className="text-center py-12 text-discord-textMuted">
+                      Nenhum log gravado nesta categoria ainda.
+                    </div>
+                  ) : (
+                    filteredLogs.map((entry) => {
+                      let levelColor = 'text-discord-textNormal';
+                      if (entry.level === 'ERROR') levelColor = 'text-discord-red font-bold';
+                      else if (entry.level === 'SUCCESS') levelColor = 'text-discord-green font-semibold';
+                      else if (entry.level === 'WARN') levelColor = 'text-discord-yellow';
+
+                      let catBadge = 'bg-[#2b2d31] text-discord-textMuted';
+                      if (entry.category === 'WS-TX') catBadge = 'bg-blue-900/40 text-blue-400 border border-blue-800/50';
+                      else if (entry.category === 'WS-RX') catBadge = 'bg-cyan-900/40 text-cyan-400 border border-cyan-800/50';
+                      else if (entry.category === 'AUDIO') catBadge = 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/50';
+                      else if (entry.category === 'VIDEO-GPU') catBadge = 'bg-purple-900/40 text-purple-400 border border-purple-800/50';
+                      else if (entry.category === 'ERROR') catBadge = 'bg-rose-900/40 text-rose-400 border border-rose-800/50';
+
+                      return (
+                        <div key={entry.id} className="flex items-start gap-2 hover:bg-[#1e1f22]/60 p-0.5 rounded">
+                          <span className="text-discord-textMuted text-[10px] flex-shrink-0">
+                            {entry.timestamp}
+                          </span>
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase flex-shrink-0 ${catBadge}`}>
+                            {entry.category}
+                          </span>
+                          <span className={`flex-1 break-all ${levelColor}`}>
+                            {entry.message}
+                            {entry.data && (
+                              <span className="text-discord-textMuted block text-[10px] mt-0.5">
+                                {typeof entry.data === 'object' ? JSON.stringify(entry.data) : String(entry.data)}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}

@@ -4,6 +4,7 @@ import {
   QUALITY_PROFILES,
 } from '../types/live-room';
 import { encodeBinaryPacket } from './binaryProtocol';
+import { logger } from './logger';
 
 export type OnVideoPacketCallback = (packet: ArrayBuffer) => void;
 export type OnTelemetryUpdateCallback = (stats: {
@@ -134,6 +135,7 @@ export class WebCodecsVideoPipeline {
       const support = await (window as any).VideoEncoder.isConfigSupported(encoderConfig);
       if (support.supported) {
         this.encoder.configure(support.config);
+        logger.success('VIDEO-GPU', `VideoEncoder configurado em ${profileConfig.width}x${profileConfig.height} @ ${profileConfig.fps} FPS (${profileConfig.label}) usando ${this.activeCodec}`);
       } else {
         // Fallback to VP8 if H.264 hardware config is rejected
         this.activeCodec = 'vp8';
@@ -145,6 +147,7 @@ export class WebCodecsVideoPipeline {
           framerate: profileConfig.fps,
           latencyMode: 'realtime',
         });
+        logger.info('VIDEO-GPU', `VideoEncoder configurado com fallback VP8 em ${profileConfig.width}x${profileConfig.height}`);
       }
     } catch (e) {
       console.warn('Fallback para VP8:', e);
@@ -157,6 +160,7 @@ export class WebCodecsVideoPipeline {
         framerate: profileConfig.fps,
         latencyMode: 'realtime',
       });
+      logger.info('VIDEO-GPU', 'VideoEncoder configurado com fallback VP8');
     }
 
     // Capture frames: Use MediaStreamTrackProcessor if available, else canvas/video element loop
