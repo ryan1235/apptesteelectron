@@ -3,6 +3,17 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 
+// Clean up any stale process on port 5173
+function freePort5173() {
+  try {
+    if (process.platform === 'win32') {
+      execSync('powershell -Command "Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"', { stdio: 'ignore' });
+    }
+  } catch (e) {
+    // Ignore if no process was running
+  }
+}
+
 function checkViteReady(url, maxAttempts = 40) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
@@ -24,6 +35,8 @@ function checkViteReady(url, maxAttempts = 40) {
 }
 
 async function main() {
+  freePort5173();
+
   console.log('📦 Compilando processos do Electron (main/preload)...');
   execSync('npx tsc -p electron/tsconfig.json', { stdio: 'inherit' });
 
@@ -60,11 +73,13 @@ async function main() {
     electronProcess.on('close', (code) => {
       console.log(`\nElectron finalizado (código: ${code})`);
       viteProcess.kill();
+      freePort5173();
       process.exit(code || 0);
     });
   } catch (err) {
     console.error('Erro na inicialização:', err);
     viteProcess.kill();
+    freePort5173();
     process.exit(1);
   }
 }

@@ -320,9 +320,29 @@ export const App: React.FC = () => {
     await enterRoom(selectedPasswordRoom.id, password);
   };
 
-  const enterRoom = async (roomId: string, password?: string) => {
+  const enterRoom = async (roomId: string, password?: string, preloadedDetails?: RoomDetails) => {
     try {
-      const details = await apiClientRef.current.getRoomDetails(roomId, password);
+      let details = preloadedDetails;
+      if (!details) {
+        try {
+          details = await apiClientRef.current.getRoomDetails(roomId, password);
+        } catch (e) {
+          const found = rooms.find((r) => r.id === roomId);
+          details = {
+            id: roomId,
+            title: found?.title || 'Sala Ao Vivo',
+            description: found?.description || '',
+            isPasswordProtected: Boolean(found?.isPasswordProtected),
+            maxParticipants: found?.maxParticipants || 16,
+            occupancy: found?.occupancy || 1,
+            createdBy: found?.createdBy || { id: 'guest', name: config.userName, avatarUrl: config.avatarUrl || null },
+            messages: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          } as RoomDetails;
+        }
+      }
+
       setActiveRoom(details);
       setMessages(details.messages || []);
 
@@ -339,7 +359,7 @@ export const App: React.FC = () => {
         avatarUrl: config.avatarUrl || null,
       });
     } catch (err: any) {
-      alert(`Falha ao entrar na sala: ${err.message}`);
+      console.error('Erro ao conectar na sala:', err);
     }
   };
 
@@ -373,13 +393,9 @@ export const App: React.FC = () => {
         knownRoomPasswords.current.set(created.id, payload.password);
       }
       await fetchRooms();
-      await enterRoom(created.id, payload.password || undefined);
+      await enterRoom(created.id, payload.password || undefined, created);
     } catch (err: any) {
       alert(`Não foi possível criar a sala no servidor: ${err.message}`);
-      if (err.message?.includes('Token') || err.message?.includes('401') || err.message?.includes('Unauthorized')) {
-        setAuthError(err.message);
-        setIsLoginModalOpen(true);
-      }
     }
   };
 
