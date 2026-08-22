@@ -6,7 +6,7 @@ import {
   AppConfig,
   Participant,
 } from '../types/live-room';
-import { decodeBinaryPacket } from './binaryProtocol';
+import { decodeBinaryPacket, encodeBinaryPacket } from './binaryProtocol';
 import { logger } from './logger';
 
 export type OnJsonMessageCallback = (msg: ServerRxMessage) => void;
@@ -51,8 +51,17 @@ export class LiveRoomWebSocketClient {
   }
 
   public connect() {
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
     if (this.config.mockMode) {
       this.initMockConnection();
+      return;
+    }
+
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
@@ -87,7 +96,6 @@ export class LiveRoomWebSocketClient {
         } else if (event.data instanceof ArrayBuffer) {
           const binaryPacket = decodeBinaryPacket(event.data);
           if (!binaryPacket) {
-            logger.warn('WS-RX', `Recebido buffer binário inválido (${event.data.byteLength} bytes)`);
             return;
           }
 
@@ -140,9 +148,16 @@ export class LiveRoomWebSocketClient {
     this.stopPingLoop();
     this.pingIntervalId = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        // Ping
+        // Envia pacote binário 50-byte de telemetria/ping (0x03) para manter o WebSocket ativo no proxy sem desconectar
+        const packet = encodeBinaryPacket({
+          packetType: PacketType.TELEMETRY,
+          roomId: this.currentRoomId || '00000000-0000-0000-0000-000000000000',
+          timestampUs: performance.now() * 1000,
+          sequenceNumber: 0,
+        });
+        this.ws.send(packet);
       }
-    }, 15000);
+    }, 10000);
   }
 
   private stopPingLoop() {
@@ -153,6 +168,12 @@ export class LiveRoomWebSocketClient {
   }
 
   public sendJson(message: ClientTxMessage) {
+    if (message.type === 'join_room') {
+      this.currentRoomId = message.roomId;
+    } else if (message.type === 'leave_room') {
+      this.currentRoomId = null;
+    }
+
     logger.info('WS-TX', `[JSON] ${(message as any).type}`, message);
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));

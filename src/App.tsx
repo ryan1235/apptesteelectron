@@ -90,6 +90,14 @@ export const App: React.FC = () => {
   const videoCodecsRef = useRef<WebCodecsVideoPipeline>(new WebCodecsVideoPipeline());
   const screenCapturerRef = useRef<ScreenCapturer>(new ScreenCapturer());
 
+  // Stale closure guards
+  const activeRoomRef = useRef<RoomDetails | null>(null);
+  activeRoomRef.current = activeRoom;
+  const currentUserIdRef = useRef<string>(currentUserId);
+  currentUserIdRef.current = currentUserId;
+  const configRef = useRef<AppConfig>(config);
+  configRef.current = config;
+
   // Initialize Services & Handlers
   useEffect(() => {
     const ws = wsClientRef.current;
@@ -122,12 +130,19 @@ export const App: React.FC = () => {
       },
       (speaking) => {
         setIsSpeaking(speaking);
-        if (activeRoom) {
+        if (activeRoomRef.current) {
           ws.sendJson({
             type: 'user_speaking',
-            roomId: activeRoom.id,
+            roomId: activeRoomRef.current.id,
             isSpeaking: speaking,
           });
+          setParticipants((prev) =>
+            prev.map((p) =>
+              p.id === currentUserIdRef.current || (p.name && p.name.toLowerCase() === configRef.current.userName.toLowerCase())
+                ? { ...p, isSpeaking: speaking }
+                : p
+            )
+          );
         }
       },
       (level) => {
@@ -209,6 +224,18 @@ export const App: React.FC = () => {
       switch (msg.type) {
         case 'connected':
           if (msg.userId) setCurrentUserId(msg.userId);
+          if (activeRoomRef.current) {
+            const currentId = activeRoomRef.current.id;
+            const savedPwd = knownRoomPasswords.current.get(currentId);
+            logger.info('WS-TX', `Reingressando na sala ${currentId} após reconectar WebSocket...`);
+            wsClientRef.current.sendJson({
+              type: 'join_room',
+              roomId: currentId,
+              password: savedPwd,
+              userName: configRef.current.userName,
+              avatarUrl: configRef.current.avatarUrl || null,
+            });
+          }
           break;
 
         case 'room_state':
