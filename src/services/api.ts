@@ -6,9 +6,6 @@ import {
   AppConfig,
 } from '../types/live-room';
 
-// In-memory rooms cache (starts empty, only holds real rooms created by the user or fetched from server)
-let localRooms: RoomDetails[] = [];
-
 export class LiveRoomsApiClient {
   private config: AppConfig;
 
@@ -24,8 +21,8 @@ export class LiveRoomsApiClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.config.jwtToken) {
-      headers['Authorization'] = `Bearer ${this.config.jwtToken}`;
+    if (this.config.jwtToken && this.config.jwtToken.trim().length > 0) {
+      headers['Authorization'] = `Bearer ${this.config.jwtToken.trim()}`;
     }
     if (password) {
       headers['x-room-password'] = password;
@@ -34,24 +31,51 @@ export class LiveRoomsApiClient {
   }
 
   /**
+   * Autenticação via Email & Senha (POST /auth/login)
+   */
+  public async login(email: string, password: string): Promise<{ token: string; user?: any }> {
+    const res = await fetch(`${this.config.apiUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || data.message || `Erro no login: ${res.status}`);
+    }
+
+    const token = data.token || data.accessToken || data.jwt || (data.user && data.user.token);
+    if (!token) {
+      throw new Error('Servidor não retornou um token JWT válido.');
+    }
+
+    return { token, user: data.user };
+  }
+
+  /**
+   * Registro de nova conta (POST /auth/register)
+   */
+  public async register(name: string, email: string, password: string): Promise<{ message: string; user?: any }> {
+    const res = await fetch(`${this.config.apiUrl}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || data.message || `Erro no registro: ${res.status}`);
+    }
+
+    return data;
+  }
+
+  /**
    * 1. Listar Salas Ao Vivo
    * GET /live-rooms
    */
   public async getLiveRooms(): Promise<RoomSummary[]> {
-    if (this.config.mockMode) {
-      return localRooms.map(r => ({
-        id: r.id,
-        title: r.title,
-        description: r.description,
-        isPasswordProtected: r.isPasswordProtected,
-        maxParticipants: r.maxParticipants,
-        occupancy: r.occupancy,
-        createdBy: r.createdBy,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }));
-    }
-
     try {
       const res = await fetch(`${this.config.apiUrl}/live-rooms`, {
         method: 'GET',
@@ -59,21 +83,11 @@ export class LiveRoomsApiClient {
       });
 
       if (!res.ok) {
-        if (res.status === 404) {
-          // If server returns 404, fallback to locally created rooms
-          return localRooms.map(r => ({
-            id: r.id,
-            title: r.title,
-            description: r.description,
-            isPasswordProtected: r.isPasswordProtected,
-            maxParticipants: r.maxParticipants,
-            occupancy: r.occupancy,
-            createdBy: r.createdBy,
-            createdAt: r.createdAt,
-            updatedAt: r.updatedAt,
-          }));
+        const errorData = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          console.warn('⚠️ Token JWT inválido ou não fornecido para /live-rooms:', errorData.error || '401 Unauthorized');
         }
-        throw new Error(`Erro ao listar salas: ${res.status} ${res.statusText}`);
+        throw new Error(errorData.error || `Erro ao listar salas: ${res.status} ${res.statusText}`);
       }
 
       const data = await res.json();
@@ -81,19 +95,9 @@ export class LiveRoomsApiClient {
         return data;
       }
       return [];
-    } catch (err) {
-      console.warn('API /live-rooms offline ou não encontrada, usando salas locais:', err);
-      return localRooms.map(r => ({
-        id: r.id,
-        title: r.title,
-        description: r.description,
-        isPasswordProtected: r.isPasswordProtected,
-        maxParticipants: r.maxParticipants,
-        occupancy: r.occupancy,
-        createdBy: r.createdBy,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-      }));
+    } catch (err: any) {
+      // Re-throw if it's an auth error or log for UI toast
+      throw err;
     }
   }
 
@@ -102,52 +106,26 @@ export class LiveRoomsApiClient {
    * POST /live-rooms
    */
   public async createRoom(payload: CreateRoomPayload): Promise<RoomDetails> {
-    const newLocalRoom: RoomDetails = {
-      id: crypto.randomUUID ? crypto.randomUUID() : 'room-' + Math.random().toString(36).substring(2, 10),
-      title: payload.title,
-      description: payload.description || '',
-      isPasswordProtected: Boolean(payload.password && payload.password.trim().length > 0),
-      maxParticipants: payload.maxParticipants || 16,
-      occupancy: 1,
-      createdBy: {
-        id: 'usr-local',
-        name: this.config.userName || 'Ryan',
-        avatarUrl: this.config.avatarUrl || null,
-      },
-      messages: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    const res = await fetch(`${this.config.apiUrl}/live-rooms`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        title: payload.title,
+        description: payload.description || undefined,
+        password: payload.password || undefined,
+        maxParticipants: payload.maxParticipants || 16,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Erro ao criar sala no servidor (${res.status}): ${res.statusText}`);
+    }
+
+    return {
+      ...data,
+      messages: data.messages || [],
     };
-
-    if (this.config.mockMode) {
-      localRooms.unshift(newLocalRoom);
-      return newLocalRoom;
-    }
-
-    try {
-      const res = await fetch(`${this.config.apiUrl}/live-rooms`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro ao criar sala: ${res.status}`);
-      }
-
-      const created = await res.json();
-      const room: RoomDetails = {
-        ...created,
-        messages: created.messages || [],
-      };
-      localRooms.unshift(room);
-      return room;
-    } catch (err) {
-      console.warn('API createRoom falhou, salvando localmente:', err);
-      localRooms.unshift(newLocalRoom);
-      return newLocalRoom;
-    }
   }
 
   /**
@@ -155,25 +133,17 @@ export class LiveRoomsApiClient {
    * POST /live-rooms/:id/verify-password
    */
   public async verifyPassword(roomId: string, password: string): Promise<VerifyPasswordResponse> {
-    try {
-      const res = await fetch(`${this.config.apiUrl}/live-rooms/${roomId}/verify-password`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ password }),
-      });
+    const res = await fetch(`${this.config.apiUrl}/live-rooms/${roomId}/verify-password`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ password }),
+    });
 
-      const data = await res.json();
-      if (!res.ok) {
-        return { valid: false, error: data.error || 'Senha incorreta.' };
-      }
-      return data;
-    } catch (err) {
-      console.warn('API verify-password offline, verificando localmente:', err);
-      if (password.length >= 1) {
-        return { valid: true, requiresPassword: true };
-      }
-      return { valid: false, error: 'Senha incorreta.' };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { valid: false, error: data.error || 'Senha incorreta.' };
     }
+    return data;
   }
 
   /**
@@ -181,34 +151,17 @@ export class LiveRoomsApiClient {
    * GET /live-rooms/:id
    */
   public async getRoomDetails(roomId: string, password?: string): Promise<RoomDetails> {
-    try {
-      const res = await fetch(`${this.config.apiUrl}/live-rooms/${roomId}`, {
-        method: 'GET',
-        headers: this.getHeaders(password),
-      });
+    const res = await fetch(`${this.config.apiUrl}/live-rooms/${roomId}`, {
+      method: 'GET',
+      headers: this.getHeaders(password),
+    });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro ao carregar detalhes: ${res.status}`);
-      }
-
-      return await res.json();
-    } catch (err) {
-      const found = localRooms.find(r => r.id === roomId);
-      if (found) return found;
-      return {
-        id: roomId,
-        title: 'Sala Ao Vivo',
-        description: 'Sala de áudio e transmissão de tela.',
-        isPasswordProtected: false,
-        maxParticipants: 16,
-        occupancy: 1,
-        createdBy: { id: 'usr-local', name: this.config.userName, avatarUrl: this.config.avatarUrl || null },
-        messages: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Erro ao carregar detalhes da sala: ${res.status}`);
     }
+
+    return data;
   }
 
   /**
@@ -216,14 +169,14 @@ export class LiveRoomsApiClient {
    * DELETE /live-rooms/:id
    */
   public async closeRoom(roomId: string): Promise<void> {
-    try {
-      await fetch(`${this.config.apiUrl}/live-rooms/${roomId}`, {
-        method: 'DELETE',
-        headers: this.getHeaders(),
-      });
-    } catch (err) {
-      console.warn('API closeRoom offline:', err);
+    const res = await fetch(`${this.config.apiUrl}/live-rooms/${roomId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+
+    if (!res.ok && res.status !== 204) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Erro ao encerrar sala: ${res.status}`);
     }
-    localRooms = localRooms.filter(r => r.id !== roomId);
   }
 }

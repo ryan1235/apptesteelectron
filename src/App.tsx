@@ -47,6 +47,7 @@ export const App: React.FC = () => {
   // Rooms & Navigation State
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [isSyncingRooms, setIsSyncingRooms] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [activeRoom, setActiveRoom] = useState<RoomDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('usr-local-id');
@@ -186,8 +187,13 @@ export const App: React.FC = () => {
     try {
       const list = await apiClientRef.current.getLiveRooms();
       setRooms(list);
-    } catch (err) {
-      console.warn('Erro ao sincronizar salas:', err);
+      setAuthError(null);
+    } catch (err: any) {
+      if (err.message?.includes('Token') || err.message?.includes('401') || err.message?.includes('Unauthorized')) {
+        setAuthError('Token JWT inválido ou ausente. Faça login com sua conta para sincronizar as salas.');
+      } else {
+        console.warn('Erro ao sincronizar salas:', err);
+      }
     } finally {
       if (!silent) {
         setTimeout(() => setIsSyncingRooms(false), 300);
@@ -361,12 +367,20 @@ export const App: React.FC = () => {
 
   // Create room
   const handleCreateRoom = async (payload: CreateRoomPayload) => {
-    const created = await apiClientRef.current.createRoom(payload);
-    if (payload.password) {
-      knownRoomPasswords.current.set(created.id, payload.password);
+    try {
+      const created = await apiClientRef.current.createRoom(payload);
+      if (payload.password) {
+        knownRoomPasswords.current.set(created.id, payload.password);
+      }
+      await fetchRooms();
+      await enterRoom(created.id, payload.password || undefined);
+    } catch (err: any) {
+      alert(`Não foi possível criar a sala no servidor: ${err.message}`);
+      if (err.message?.includes('Token') || err.message?.includes('401') || err.message?.includes('Unauthorized')) {
+        setAuthError(err.message);
+        setIsLoginModalOpen(true);
+      }
     }
-    await fetchRooms();
-    await enterRoom(created.id, payload.password || undefined);
   };
 
   // Delete room
@@ -487,17 +501,13 @@ export const App: React.FC = () => {
   const handleLogin = (
     userName: string,
     avatarUrl: string,
-    jwtToken?: string,
-    apiUrl?: string,
-    wsUrl?: string
+    jwtToken: string
   ) => {
     const updated: AppConfig = {
       ...config,
       userName,
       avatarUrl,
-      jwtToken: jwtToken !== undefined ? jwtToken : config.jwtToken,
-      apiUrl: apiUrl || config.apiUrl,
-      wsUrl: wsUrl || config.wsUrl,
+      jwtToken: jwtToken.trim(),
     };
 
     localStorage.setItem('discord_live_rooms_auth_v1', 'true');
@@ -611,6 +621,7 @@ export const App: React.FC = () => {
       <LoginModal
         isOpen={isLoginModalOpen}
         config={config}
+        authError={authError}
         onLogin={handleLogin}
       />
 
