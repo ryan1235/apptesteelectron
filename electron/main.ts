@@ -132,11 +132,14 @@ let manualOverlayToggle: boolean = false;
 function createOverlayWindow() {
   if (overlayWindow) return;
 
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+
   overlayWindow = new BrowserWindow({
-    width: 260,
-    height: 440,
-    x: 20,
-    y: 20,
+    width: width || 1920,
+    height: height || 1080,
+    x: 0,
+    y: 0,
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
@@ -411,6 +414,18 @@ ipcMain.on('toggle-overlay-window', () => {
       manualOverlayToggle = true;
       overlayWindow.showInactive();
     }
+  }
+});
+
+ipcMain.on('overlay-video-frame', (_event, frameData: string) => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send('overlay-video-frame', frameData);
+  }
+});
+
+ipcMain.on('save-overlay-config', (_event, configUpdate: any) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('overlay-config-saved', configUpdate);
   }
 });
 

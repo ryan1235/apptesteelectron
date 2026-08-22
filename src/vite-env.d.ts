@@ -27,6 +27,10 @@ export interface ElectronAPI {
   onOverlayStateUpdated: (callback: (state: OverlayState) => void) => () => void;
   setOverlayIgnoreMouse: (ignore: boolean) => void;
   toggleOverlay: () => void;
+  sendOverlayVideoFrame: (frameData: string) => void;
+  onOverlayVideoFrame: (callback: (frameData: string) => void) => () => void;
+  saveOverlayConfig: (configUpdate: Partial<OverlayState>) => void;
+  onOverlayConfigSaved: (callback: (configUpdate: Partial<OverlayState>) => void) => () => void;
 
   // Global Shortcuts
   onGlobalToggleMic: (callback: () => void) => () => void;

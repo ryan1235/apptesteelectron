@@ -18,6 +18,10 @@ export interface OverlayRecentMessage {
   timestamp: number;
 }
 
+export type OverlayWidgetCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export type OverlayPipSize = 'small' | 'medium' | 'large';
+export type OverlayVoiceMode = 'speaking_only' | 'all';
+
 export interface OverlayState {
   activeRoomTitle?: string;
   participants: OverlayParticipant[];
@@ -26,6 +30,19 @@ export interface OverlayState {
   detectedGame?: string;
   myMicOn: boolean;
   myDeafened: boolean;
+  activePresenter?: {
+    userId: string;
+    userName: string;
+    avatarUrl?: string | null;
+    qualityProfile?: string;
+  } | null;
+  voicePosition?: OverlayWidgetCorner;
+  pipPosition?: OverlayWidgetCorner;
+  chatPosition?: OverlayWidgetCorner;
+  pipSize?: OverlayPipSize;
+  pipOpacity?: number;
+  voiceMode?: OverlayVoiceMode;
+  showPip?: boolean;
 }
 
 export interface DesktopSource {
@@ -90,6 +107,26 @@ const electronAPI = {
   },
   toggleOverlay: () => {
     ipcRenderer.send('toggle-overlay-window');
+  },
+  sendOverlayVideoFrame: (frameData: string) => {
+    ipcRenderer.send('overlay-video-frame', frameData);
+  },
+  onOverlayVideoFrame: (callback: (frameData: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, frameData: string) => callback(frameData);
+    ipcRenderer.on('overlay-video-frame', handler);
+    return () => {
+      ipcRenderer.removeListener('overlay-video-frame', handler);
+    };
+  },
+  saveOverlayConfig: (configUpdate: Partial<OverlayState>) => {
+    ipcRenderer.send('save-overlay-config', configUpdate);
+  },
+  onOverlayConfigSaved: (callback: (configUpdate: Partial<OverlayState>) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, configUpdate: Partial<OverlayState>) => callback(configUpdate);
+    ipcRenderer.on('overlay-config-saved', handler);
+    return () => {
+      ipcRenderer.removeListener('overlay-config-saved', handler);
+    };
   },
 
   // Global Shortcuts Listeners

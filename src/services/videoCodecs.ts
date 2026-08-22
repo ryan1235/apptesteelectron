@@ -37,6 +37,7 @@ export class WebCodecsVideoPipeline {
   private canvasCtx: CanvasRenderingContext2D | null = null;
   private onTelemetryUpdate: OnTelemetryUpdateCallback | null = null;
   private onRequestKeyframe: (() => void) | null = null;
+  private onFrameDecoded: (() => void) | null = null;
 
   // Telemetry metrics
   private framesCountInInterval: number = 0;
@@ -59,6 +60,10 @@ export class WebCodecsVideoPipeline {
 
   public setOnRequestKeyframe(cb: () => void) {
     this.onRequestKeyframe = cb;
+  }
+
+  public setOnFrameDecoded(cb: () => void) {
+    this.onFrameDecoded = cb;
   }
 
   public getActiveCodec(): string {
@@ -396,6 +401,7 @@ export class WebCodecsVideoPipeline {
     }
 
     this.canvasCtx.drawImage(frame, 0, 0, this.targetCanvas.width, this.targetCanvas.height);
+    this.onFrameDecoded?.();
   }
 
   private startTelemetryTimer() {

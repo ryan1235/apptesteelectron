@@ -658,14 +658,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Tab: In-Game Overlay & Global Hotkeys */}
             {activeTab === 'overlay' && (
               <div className="space-y-4 text-xs animate-fade-in">
+                {/* 1. Main Toggle */}
                 <div className="p-3 bg-[#1e1f22] rounded-xl border border-discord-border space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="font-bold text-sm text-discord-textHeader block">
-                        In-Game Overlay Flutuante
+                        In-Game Overlay Flutuante para Jogos
                       </span>
                       <span className="text-[11px] text-discord-textMuted">
-                        Exibe quem está falando e notificações de chat diretamente por cima dos seus jogos.
+                        Exibe quem fala, mini-chat e picture-in-picture de tela por cima de jogos exclusivos.
                       </span>
                     </div>
                     <button
@@ -680,30 +681,177 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
 
                   {formData.enableInGameOverlay && (
-                    <div className="pt-2 border-t border-[#2b2d31] space-y-2">
-                      <label className="font-semibold text-discord-textHeader block">
-                        Posição do Overlay na Tela
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { id: 'top-left', label: 'Superior Esquerdo (Padrão)' },
-                          { id: 'top-right', label: 'Superior Direito' },
-                          { id: 'bottom-left', label: 'Inferior Esquerdo' },
-                          { id: 'bottom-right', label: 'Inferior Direito' },
-                        ].map((pos) => (
-                          <button
-                            key={pos.id}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, overlayPosition: pos.id as any })}
-                            className={`p-2 rounded-lg border text-left font-medium transition-all ${
-                              formData.overlayPosition === pos.id
-                                ? 'bg-discord-accent/20 border-discord-accent text-white'
-                                : 'bg-[#2b2d31] border-[#383a40] text-discord-textMuted hover:text-white'
-                            }`}
-                          >
-                            {pos.label}
-                          </button>
-                        ))}
+                    <div className="pt-3 border-t border-[#2b2d31] space-y-4">
+                      {/* Voice Avatars Position & Mode */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="font-bold text-discord-textHeader block">
+                            🎙️ Avatares de Voz (Quem está falando)
+                          </label>
+                          {/* Mode Toggle */}
+                          <div className="flex rounded-lg bg-[#2b2d31] p-0.5 border border-white/5 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, overlayVoiceMode: 'speaking_only' })}
+                              className={`px-2 py-0.5 rounded font-semibold transition-colors ${
+                                formData.overlayVoiceMode === 'speaking_only'
+                                  ? 'bg-discord-accent text-white'
+                                  : 'text-discord-textMuted hover:text-white'
+                              }`}
+                            >
+                              Só quem fala (Discreto)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, overlayVoiceMode: 'all' })}
+                              className={`px-2 py-0.5 rounded font-semibold transition-colors ${
+                                formData.overlayVoiceMode === 'all'
+                                  ? 'bg-discord-accent text-white'
+                                  : 'text-discord-textMuted hover:text-white'
+                              }`}
+                            >
+                              Todos os participantes
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[
+                            { id: 'top-left', label: '↖ Sup. Esq.' },
+                            { id: 'top-right', label: '↗ Sup. Dir.' },
+                            { id: 'bottom-left', label: '↙ Inf. Esq.' },
+                            { id: 'bottom-right', label: '↘ Inf. Dir.' },
+                          ].map((pos) => (
+                            <button
+                              key={pos.id}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, overlayVoicePosition: pos.id as any })}
+                              className={`p-2 rounded-lg border text-center font-semibold transition-all text-[11px] ${
+                                formData.overlayVoicePosition === pos.id
+                                  ? 'bg-discord-accent/20 border-discord-accent text-white shadow'
+                                  : 'bg-[#2b2d31] border-[#383a40] text-discord-textMuted hover:text-white'
+                              }`}
+                            >
+                              {pos.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Screen Share PIP Player */}
+                      <div className="space-y-2 pt-2 border-t border-[#2b2d31]">
+                        <div className="flex items-center justify-between">
+                          <label className="font-bold text-discord-textHeader block">
+                            📺 PIP de Compartilhamento de Tela (Assistir amigos no jogo)
+                          </label>
+                          <input
+                            type="checkbox"
+                            checked={formData.overlayShowPip !== false}
+                            onChange={(e) => setFormData({ ...formData, overlayShowPip: e.target.checked })}
+                            className="w-4 h-4 accent-discord-accent cursor-pointer"
+                          />
+                        </div>
+
+                        {formData.overlayShowPip !== false && (
+                          <>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {[
+                                { id: 'top-left', label: '↖ Sup. Esq.' },
+                                { id: 'top-right', label: '↗ Sup. Dir. (Padrão)' },
+                                { id: 'bottom-left', label: '↙ Inf. Esq.' },
+                                { id: 'bottom-right', label: '↘ Inf. Dir.' },
+                              ].map((pos) => (
+                                <button
+                                  key={pos.id}
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, overlayPipPosition: pos.id as any })}
+                                  className={`p-2 rounded-lg border text-center font-semibold transition-all text-[11px] ${
+                                    formData.overlayPipPosition === pos.id
+                                      ? 'bg-discord-accent/20 border-discord-accent text-white shadow'
+                                      : 'bg-[#2b2d31] border-[#383a40] text-discord-textMuted hover:text-white'
+                                  }`}
+                                >
+                                  {pos.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 pt-1">
+                              <div>
+                                <label className="text-[11px] text-discord-textMuted block mb-1">
+                                  Tamanho do Player PIP:
+                                </label>
+                                <div className="flex rounded-lg bg-[#2b2d31] p-0.5 border border-white/5 text-[11px]">
+                                  {[
+                                    { id: 'small', label: 'Pequeno (240p)' },
+                                    { id: 'medium', label: 'Médio (360p)' },
+                                    { id: 'large', label: 'Grande (480p)' },
+                                  ].map((sz) => (
+                                    <button
+                                      key={sz.id}
+                                      type="button"
+                                      onClick={() => setFormData({ ...formData, overlayPipSize: sz.id as any })}
+                                      className={`flex-1 py-1 rounded text-center font-medium transition-colors ${
+                                        formData.overlayPipSize === sz.id
+                                          ? 'bg-discord-accent text-white font-bold'
+                                          : 'text-discord-textMuted hover:text-white'
+                                      }`}
+                                    >
+                                      {sz.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="flex justify-between items-center text-[11px] mb-1">
+                                  <span className="text-discord-textMuted">Opacidade do Vídeo:</span>
+                                  <span className="text-discord-green font-mono font-bold">
+                                    {formData.overlayPipOpacity || 90}%
+                                  </span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={20}
+                                  max={100}
+                                  value={formData.overlayPipOpacity || 90}
+                                  onChange={(e) =>
+                                    setFormData({ ...formData, overlayPipOpacity: Number(e.target.value) })
+                                  }
+                                  className="w-full accent-discord-green bg-[#111214] rounded-lg cursor-pointer h-2"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Chat Toast Position */}
+                      <div className="space-y-2 pt-2 border-t border-[#2b2d31]">
+                        <label className="font-bold text-discord-textHeader block">
+                          💬 Notificações de Chat (Toast Popups)
+                        </label>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[
+                            { id: 'top-left', label: '↖ Sup. Esq.' },
+                            { id: 'top-right', label: '↗ Sup. Dir.' },
+                            { id: 'bottom-left', label: '↙ Inf. Esq. (Padrão)' },
+                            { id: 'bottom-right', label: '↘ Inf. Dir.' },
+                          ].map((pos) => (
+                            <button
+                              key={pos.id}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, overlayChatPosition: pos.id as any })}
+                              className={`p-2 rounded-lg border text-center font-semibold transition-all text-[11px] ${
+                                formData.overlayChatPosition === pos.id
+                                  ? 'bg-discord-accent/20 border-discord-accent text-white shadow'
+                                  : 'bg-[#2b2d31] border-[#383a40] text-discord-textMuted hover:text-white'
+                              }`}
+                            >
+                              {pos.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}

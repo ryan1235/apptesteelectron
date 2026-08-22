@@ -124,6 +124,7 @@ export const App: React.FC = () => {
   localScreenStreamRef.current = localScreenStream;
   const activeProfileRef = useRef<QualityProfile>(activeProfile);
   activeProfileRef.current = activeProfile;
+  const lastOverlayFrameTimeRef = useRef<number>(0);
 
   // Remote speaking timeouts map for automatic speaking glow
   const remoteSpeakingTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -300,6 +301,28 @@ export const App: React.FC = () => {
       }
     });
 
+    const unsubOverlayConfig = window.electronAPI?.onOverlayConfigSaved?.((update) => {
+      setConfig((prev) => {
+        const next = { ...prev, ...update };
+        saveConfig(next);
+        return next;
+      });
+    });
+
+    // Forward Decoded Video Frames to In-Game Overlay PIP
+    videoCodecsRef.current.setOnFrameDecoded(() => {
+      const now = performance.now();
+      if (now - lastOverlayFrameTimeRef.current >= 33) {
+        lastOverlayFrameTimeRef.current = now;
+        if (canvasRef.current && window.electronAPI?.sendOverlayVideoFrame) {
+          try {
+            const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.65);
+            window.electronAPI.sendOverlayVideoFrame(dataUrl);
+          } catch (e) {}
+        }
+      }
+    });
+
     // Fetch rooms and groups
     fetchRooms();
 
@@ -317,6 +340,7 @@ export const App: React.FC = () => {
       unsubGlobalDeafen?.();
       unsubGlobalScreen?.();
       unsubGameActivity?.();
+      unsubOverlayConfig?.();
       ws.disconnect();
       audio.stop();
       video.destroy();
@@ -347,9 +371,24 @@ export const App: React.FC = () => {
         isLocked: true,
         myMicOn: !isMicMuted,
         myDeafened: isDeafened,
+        activePresenter: activePresenter
+          ? {
+              userId: activePresenter.userId,
+              userName: activePresenter.userName,
+              avatarUrl: activePresenter.avatarUrl,
+              qualityProfile: activePresenter.qualityProfile,
+            }
+          : null,
+        voicePosition: config.overlayVoicePosition || 'top-left',
+        pipPosition: config.overlayPipPosition || 'top-right',
+        chatPosition: config.overlayChatPosition || 'bottom-left',
+        pipSize: config.overlayPipSize || 'medium',
+        pipOpacity: config.overlayPipOpacity ?? 90,
+        voiceMode: config.overlayVoiceMode || 'speaking_only',
+        showPip: config.overlayShowPip ?? true,
       });
     }
-  }, [activeRoom, participants, messages, isMicMuted, isDeafened]);
+  }, [activeRoom, participants, messages, isMicMuted, isDeafened, activePresenter, config]);
 
   // Update canvas target when entering room
   useEffect(() => {

@@ -50,6 +50,13 @@ export function getDefaultConfig(): AppConfig {
     vadSensitivity: 40,
     enableInGameOverlay: true,
     overlayPosition: 'top-left',
+    overlayVoicePosition: 'top-left',
+    overlayPipPosition: 'top-right',
+    overlayChatPosition: 'bottom-left',
+    overlayPipSize: 'medium',
+    overlayPipOpacity: 90,
+    overlayVoiceMode: 'all',
+    overlayShowPip: true,
     mockMode: false,
   };
 }

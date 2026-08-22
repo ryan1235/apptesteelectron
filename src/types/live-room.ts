@@ -197,6 +197,7 @@ export interface Participant {
 export interface PresenterInfo {
   userId: string;
   userName: string;
+  avatarUrl?: string | null;
   qualityProfile: QualityProfile;
   startedAt: string;
 }
@@ -272,6 +273,10 @@ export interface BinaryHeader {
 // Configurações, Telemetria & In-Game Overlay
 // ==========================================
 
+export type OverlayWidgetCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export type OverlayPipSize = 'small' | 'medium' | 'large';
+export type OverlayVoiceMode = 'speaking_only' | 'all';
+
 export interface AppConfig {
   apiUrl: string;
   wsUrl: string;
@@ -289,7 +294,14 @@ export interface AppConfig {
   preventScreenAudioLoopback: boolean;
   vadSensitivity: number; // 0 to 100
   enableInGameOverlay: boolean;
-  overlayPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  overlayPosition: OverlayWidgetCorner;
+  overlayVoicePosition: OverlayWidgetCorner;
+  overlayPipPosition: OverlayWidgetCorner;
+  overlayChatPosition: OverlayWidgetCorner;
+  overlayPipSize: OverlayPipSize;
+  overlayPipOpacity: number; // 20 to 100
+  overlayVoiceMode: OverlayVoiceMode;
+  overlayShowPip: boolean;
   selectedMicrophoneId?: string;
   selectedSpeakerId?: string;
   mockMode: boolean;
@@ -333,4 +345,18 @@ export interface OverlayState {
   detectedGame?: string;
   myMicOn: boolean;
   myDeafened: boolean;
+  activePresenter?: {
+    userId: string;
+    userName: string;
+    avatarUrl?: string | null;
+    qualityProfile?: string;
+  } | null;
+  // Widget customization
+  voicePosition: OverlayWidgetCorner;
+  pipPosition: OverlayWidgetCorner;
+  chatPosition: OverlayWidgetCorner;
+  pipSize: OverlayPipSize;
+  pipOpacity: number;
+  voiceMode: OverlayVoiceMode;
+  showPip: boolean;
 }
