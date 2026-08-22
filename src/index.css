@@ -7,8 +7,8 @@
     @apply border-discord-border;
   }
   
-  body {
-    @apply bg-discord-sidebar text-discord-textNormal;
+  html, body, #root {
+    background-color: transparent !important;
     user-select: none;
     -webkit-user-select: none;
   }

@@ -45,13 +45,16 @@ function stopProcessAudioCapture() {
   }
 }
 
-// Database of top games for automatic activity detection
+// Database of top games for automatic activity detection (only actual games)
 const KNOWN_GAMES: Record<string, string> = {
   'valorant.exe': 'VALORANT',
   'valorant-win64-shipping.exe': 'VALORANT',
   'cs2.exe': 'Counter-Strike 2',
   'csgo.exe': 'Counter-Strike 2',
   'gta5.exe': 'Grand Theft Auto V',
+  'gta_sa.exe': 'GTA San Andreas',
+  'fivem.exe': 'GTA V (FiveM)',
+  'fivem_b2699_gtaprocess.exe': 'GTA V (FiveM)',
   'leagueclientux.exe': 'League of Legends',
   'league of legends.exe': 'League of Legends',
   'fortniteclient-win64-shipping.exe': 'Fortnite',
@@ -67,10 +70,17 @@ const KNOWN_GAMES: Record<string, string> = {
   'honkaistarrail.exe': 'Honkai: Star Rail',
   'cyberpunk2077.exe': 'Cyberpunk 2077',
   'cod.exe': 'Call of Duty: Warzone',
-  'steam.exe': 'Steam',
-  'discord.exe': 'Discord',
-  'spotify.exe': 'Spotify',
-  'code.exe': 'Visual Studio Code',
+  'rainbowsix.exe': 'Rainbow Six Siege',
+  'pubg.exe': 'PUBG',
+  'tslgame.exe': 'PUBG',
+  'fc24.exe': 'EA FC 24',
+  'fc25.exe': 'EA FC 25',
+  'rimworldwin64.exe': 'RimWorld',
+  'rimworldwin.exe': 'RimWorld',
+  'rimworld.exe': 'RimWorld',
+  'foxhole.exe': 'Foxhole',
+  'war-win64-shipping.exe': 'Foxhole',
+  'war.exe': 'Foxhole',
 };
 
 function startGameScan() {
@@ -101,8 +111,8 @@ function startGameScan() {
         }
         if (overlayWindow && !overlayWindow.isDestroyed()) {
           overlayWindow.webContents.send('game-activity-detected', foundGame);
-          // Only show overlay when game is running AND in a voice room
-          if (foundGame && lastOverlayState?.activeRoomTitle) {
+          // Only show overlay when game is running AND in a voice room AND main window is not focused
+          if (foundGame && lastOverlayState?.activeRoomTitle && !mainWindow?.isFocused()) {
             overlayWindow.showInactive();
           } else if (!foundGame && !manualOverlayToggle && overlayWindow.isVisible()) {
             overlayWindow.hide();
@@ -123,18 +133,19 @@ function createOverlayWindow() {
   if (overlayWindow) return;
 
   overlayWindow = new BrowserWindow({
-    width: 280,
-    height: 480,
+    width: 260,
+    height: 440,
     x: 20,
     y: 20,
     transparent: true,
+    backgroundColor: '#00000000',
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
     hasShadow: false,
     focusable: false,
-    show: false, // strictly hidden until a game is active in room
+    show: false, // strictly hidden until an actual game is active
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -169,10 +180,11 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 960,
+    minWidth: 940,
     minHeight: 600,
-    frame: false, // Discord custom frameless titlebar
+    frame: false,
     backgroundColor: '#1e1f22',
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -189,6 +201,20 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  // When Discord main app is focused, hide the overlay
+  mainWindow.on('focus', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed() && !manualOverlayToggle) {
+      overlayWindow.hide();
+    }
+  });
+
+  // When Discord main app is blurred (user alt-tabs into game), show overlay if game is active
+  mainWindow.on('blur', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed() && lastDetectedGame && lastOverlayState?.activeRoomTitle) {
+      overlayWindow.showInactive();
+    }
+  });
 
   mainWindow.on('closed', () => {
     stopProcessAudioCapture();

@@ -8,6 +8,11 @@ const isOverlay =
   typeof window !== 'undefined' &&
   new URLSearchParams(window.location.search).get('overlay') === 'true';
 
+if (isOverlay) {
+  document.documentElement.style.background = 'transparent';
+  document.body.style.background = 'transparent';
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {isOverlay ? <InGameOverlay /> : <App />}

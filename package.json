@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build && tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\" && node -e \"require('fs').copyFileSync('native/ProcessAudioCapture.exe', 'dist-electron/ProcessAudioCapture.exe')\"",
+    "build": "tsc -p tsconfig.json --noEmit && vite build && tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', '{\\\"type\\\":\\\"commonjs\\\"}')\" && node -e \"try { require('fs').copyFileSync('native/ProcessAudioCapture.exe', 'dist-electron/ProcessAudioCapture.exe'); } catch (e) {}\"",
     "electron:dev": "node scripts/dev.js",
     "electron:build": "npm run build && electron-builder --win",
     "start": "node scripts/dev.js",
