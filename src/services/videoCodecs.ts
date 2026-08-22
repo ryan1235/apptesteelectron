@@ -19,6 +19,7 @@ export class WebCodecsVideoPipeline {
   private encoder: any = null;
   private isEncoding: boolean = false;
   private forceNextKeyframe: boolean = true;
+  private frameCounter: number = 0;
   private currentRoomId: string = '';
   private encodeSequence: number = 0;
   private currentProfile: QualityProfile = 'SMOOTH_60FPS';
@@ -30,16 +31,19 @@ export class WebCodecsVideoPipeline {
   // Decoder properties
   private decoder: any = null;
   private isDecoderConfigured: boolean = false;
+  private hasReceivedKeyframe: boolean = false;
+  private lastKeyframeRequestTime: number = 0;
   private targetCanvas: HTMLCanvasElement | null = null;
   private canvasCtx: CanvasRenderingContext2D | null = null;
   private onTelemetryUpdate: OnTelemetryUpdateCallback | null = null;
+  private onRequestKeyframe: (() => void) | null = null;
 
   // Telemetry metrics
   private framesCountInInterval: number = 0;
   private bytesCountInInterval: number = 0;
   private totalFramesDecoded: number = 0;
   private telemetryIntervalId: any = null;
-  private activeCodec: string = 'avc1.42002a'; // H.264 Baseline/Main
+  private activeCodec: string = 'vp8'; // VP8 standard for universal zero-latency realtime cross-compatibility
 
   constructor() {
     this.startTelemetryTimer();
@@ -53,6 +57,14 @@ export class WebCodecsVideoPipeline {
     this.onTelemetryUpdate = cb;
   }
 
+  public setOnRequestKeyframe(cb: () => void) {
+    this.onRequestKeyframe = cb;
+  }
+
+  public getActiveCodec(): string {
+    return this.activeCodec;
+  }
+
   public setTargetCanvas(canvas: HTMLCanvasElement | null) {
     this.targetCanvas = canvas;
     if (canvas) {
@@ -64,6 +76,14 @@ export class WebCodecsVideoPipeline {
 
   public requestKeyFrame() {
     this.forceNextKeyframe = true;
+  }
+
+  private requestKeyframeThrottle() {
+    const now = performance.now();
+    if (now - this.lastKeyframeRequestTime > 800) {
+      this.lastKeyframeRequestTime = now;
+      this.onRequestKeyframe?.();
+    }
   }
 
   // ==========================================
@@ -83,6 +103,7 @@ export class WebCodecsVideoPipeline {
     this.currentRoomId = roomId;
     this.currentProfile = profile;
     this.forceNextKeyframe = true;
+    this.frameCounter = 0;
     this.isEncoding = true;
 
     const profileConfig = QUALITY_PROFILES[profile];
@@ -119,25 +140,25 @@ export class WebCodecsVideoPipeline {
       },
     });
 
-    const encoderConfig = {
-      codec: this.activeCodec,
+    // Try VP8 first for universal hardware/software acceleration without missing SPS/PPS issues
+    const vp8Config = {
+      codec: 'vp8',
       width: profileConfig.width,
       height: profileConfig.height,
       bitrate: profileConfig.bitrate,
       framerate: profileConfig.fps,
       latencyMode: 'realtime',
       hardwareAcceleration: 'prefer-hardware',
-      avc: { format: 'annexb' },
     };
 
-    // Check if configuration is supported
     try {
-      const support = await (window as any).VideoEncoder.isConfigSupported(encoderConfig);
+      const support = await (window as any).VideoEncoder.isConfigSupported(vp8Config);
       if (support.supported) {
+        this.activeCodec = 'vp8';
         this.encoder.configure(support.config);
-        logger.success('VIDEO-GPU', `VideoEncoder configurado em ${profileConfig.width}x${profileConfig.height} @ ${profileConfig.fps} FPS (${profileConfig.label}) usando ${this.activeCodec}`);
+        logger.success('VIDEO-GPU', `VideoEncoder configurado em ${profileConfig.width}x${profileConfig.height} @ ${profileConfig.fps} FPS (${profileConfig.label}) usando VP8`);
       } else {
-        // Fallback to VP8 if H.264 hardware config is rejected
+        // Fallback to VP8 default config
         this.activeCodec = 'vp8';
         this.encoder.configure({
           codec: 'vp8',
@@ -147,7 +168,7 @@ export class WebCodecsVideoPipeline {
           framerate: profileConfig.fps,
           latencyMode: 'realtime',
         });
-        logger.info('VIDEO-GPU', `VideoEncoder configurado com fallback VP8 em ${profileConfig.width}x${profileConfig.height}`);
+        logger.info('VIDEO-GPU', `VideoEncoder configurado com VP8 realtime`);
       }
     } catch (e) {
       console.warn('Fallback para VP8:', e);
@@ -160,7 +181,6 @@ export class WebCodecsVideoPipeline {
         framerate: profileConfig.fps,
         latencyMode: 'realtime',
       });
-      logger.info('VIDEO-GPU', 'VideoEncoder configurado com fallback VP8');
     }
 
     // Capture frames: Use MediaStreamTrackProcessor if available, else canvas/video element loop
@@ -176,8 +196,12 @@ export class WebCodecsVideoPipeline {
               if (done || !frame) break;
 
               if (this.encoder && this.encoder.state === 'configured') {
-                const isKey = this.forceNextKeyframe;
-                this.forceNextKeyframe = false;
+                // Emit keyframe on demand OR periodically every 60 frames (1s) so new viewers recover immediately
+                const isKey = this.forceNextKeyframe || (this.frameCounter % 60 === 0);
+                if (isKey) {
+                  this.forceNextKeyframe = false;
+                }
+                this.frameCounter++;
                 this.encoder.encode(frame, { keyFrame: isKey });
               }
               frame.close();
@@ -218,8 +242,11 @@ export class WebCodecsVideoPipeline {
           const frame = new (window as any).VideoFrame(video, {
             timestamp: performance.now() * 1000,
           });
-          const isKey = this.forceNextKeyframe;
-          this.forceNextKeyframe = false;
+          const isKey = this.forceNextKeyframe || (this.frameCounter % 60 === 0);
+          if (isKey) {
+            this.forceNextKeyframe = false;
+          }
+          this.frameCounter++;
           this.encoder.encode(frame, { keyFrame: isKey });
           frame.close();
         } catch (e) {
@@ -256,11 +283,14 @@ export class WebCodecsVideoPipeline {
   // DECODER (Receiver & Canvas GPU Renderer)
   // ==========================================
 
-  public initDecoder() {
+  public initDecoder(codec: string = this.activeCodec) {
     if (!('VideoDecoder' in window)) {
       console.warn('WebCodecs VideoDecoder não suportado nativamente neste contexto.');
       return;
     }
+
+    this.activeCodec = codec || 'vp8';
+    this.hasReceivedKeyframe = false;
 
     if (this.decoder) {
       try {
@@ -275,7 +305,10 @@ export class WebCodecsVideoPipeline {
         frame.close();
       },
       error: (err: any) => {
-        console.error('Erro no VideoDecoder WebCodecs:', err);
+        console.warn('VideoDecoder erro interno:', err);
+        this.isDecoderConfigured = false;
+        this.hasReceivedKeyframe = false;
+        this.requestKeyframeThrottle();
       },
     });
 
@@ -286,8 +319,9 @@ export class WebCodecsVideoPipeline {
         optimizeForLatency: true,
       });
       this.isDecoderConfigured = true;
+      logger.info('VIDEO-GPU', `VideoDecoder configurado com codec ${this.activeCodec}`);
     } catch (e) {
-      console.warn('Falha ao configurar decoder H.264, tentando VP8:', e);
+      console.warn(`Falha ao configurar decoder com ${this.activeCodec}, tentando fallback VP8:`, e);
       try {
         this.activeCodec = 'vp8';
         this.decoder.configure({
@@ -306,12 +340,22 @@ export class WebCodecsVideoPipeline {
     isKeyframe: boolean,
     timestampUs: number
   ) {
-    if (!this.decoder || !this.isDecoderConfigured) {
-      this.initDecoder();
+    if (!this.decoder || !this.isDecoderConfigured || this.decoder.state !== 'configured') {
+      this.initDecoder(this.activeCodec);
     }
 
     if (!this.decoder || this.decoder.state !== 'configured') {
       return;
+    }
+
+    // WebCodecs requires the first decoded frame after configure() to be a keyframe.
+    // If we receive delta frames before the first keyframe arrives, ignore delta to prevent decoder crash.
+    if (!this.hasReceivedKeyframe) {
+      if (!isKeyframe) {
+        this.requestKeyframeThrottle();
+        return;
+      }
+      this.hasReceivedKeyframe = true;
     }
 
     try {
@@ -328,15 +372,24 @@ export class WebCodecsVideoPipeline {
       this.totalFramesDecoded++;
     } catch (err) {
       console.warn('Erro ao decodificar EncodedVideoChunk:', err);
+      this.hasReceivedKeyframe = false;
+      this.requestKeyframeThrottle();
     }
   }
 
   private renderFrameToCanvas(frame: any) {
-    if (!this.targetCanvas || !this.canvasCtx) return;
+    if (!this.targetCanvas) return;
+    if (!this.canvasCtx) {
+      this.canvasCtx = this.targetCanvas.getContext('2d', { alpha: false, desynchronized: true });
+    }
+    if (!this.canvasCtx) return;
 
-    if (this.targetCanvas.width !== frame.displayWidth || this.targetCanvas.height !== frame.displayHeight) {
-      this.targetCanvas.width = frame.displayWidth;
-      this.targetCanvas.height = frame.displayHeight;
+    const width = frame.displayWidth || frame.codedWidth;
+    const height = frame.displayHeight || frame.codedHeight;
+
+    if (width && height && (this.targetCanvas.width !== width || this.targetCanvas.height !== height)) {
+      this.targetCanvas.width = width;
+      this.targetCanvas.height = height;
     }
 
     this.canvasCtx.drawImage(frame, 0, 0, this.targetCanvas.width, this.targetCanvas.height);
@@ -354,7 +407,7 @@ export class WebCodecsVideoPipeline {
         fps,
         bitrateKbps,
         framesDecoded: this.totalFramesDecoded,
-        codec: this.activeCodec,
+        codec: this.activeCodec.toUpperCase(),
       });
     }, 1000);
   }

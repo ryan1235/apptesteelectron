@@ -203,7 +203,7 @@ export type ClientTxMessage =
   | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null; clientUserId?: string }
   | { type: 'toggle_mic'; roomId: string; micOn: boolean; clientUserId?: string }
   | { type: 'user_speaking'; roomId: string; isSpeaking: boolean; clientUserId?: string }
-  | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile; clientUserId?: string }
+  | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile; codec?: string; clientUserId?: string }
   | { type: 'stop_screen_share'; roomId: string; clientUserId?: string }
   | { type: 'request_keyframe'; roomId: string }
   | { type: 'chat_message'; roomId: string; text?: string; content?: string; clientUserId?: string; userName?: string; avatarUrl?: string | null }
@@ -216,7 +216,7 @@ export type ServerRxMessage =
   | { type: 'room_state'; roomId?: string; title?: string; isPasswordProtected?: boolean; maxParticipants?: number; room?: Partial<RoomDetails>; participants?: Participant[]; activePresenter?: PresenterInfo | null; activeScreenShare?: any; yourUserId?: string; yourClientUserId?: string; messages?: ChatMessage[] }
   | { type: 'user_joined'; user?: any; participant?: any; userId?: string; userName?: string; clientUserId?: string; avatarUrl?: string | null; micOn?: boolean; isSpeaking?: boolean; isSharing?: boolean; isScreenSharing?: boolean }
   | { type: 'user_left'; userId?: string; userName?: string; clientUserId?: string; user?: any }
-  | { type: 'screen_share_started'; presenterId?: string; userId?: string; name?: string; presenterName?: string; userName?: string; qualityProfile?: QualityProfile }
+  | { type: 'screen_share_started'; presenterId?: string; userId?: string; name?: string; presenterName?: string; userName?: string; qualityProfile?: QualityProfile; codec?: string }
   | { type: 'screen_share_stopped'; presenterId?: string; userId?: string }
   | { type: 'mic_updated'; userId?: string; userName?: string; micOn?: boolean; user?: any }
   | { type: 'mic_toggled'; userId?: string; userName?: string; micOn?: boolean; user?: any }

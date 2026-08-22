@@ -170,6 +170,15 @@ export const App: React.FC = () => {
       }));
     });
 
+    video.setOnRequestKeyframe(() => {
+      if (activeRoomRef.current) {
+        ws.sendJson({
+          type: 'request_keyframe',
+          roomId: activeRoomRef.current.id,
+        });
+      }
+    });
+
     // Bind WebSocket Handlers
     ws.setCallbacks({
       onJsonMessage: (msg: ServerRxMessage) => {
@@ -311,12 +320,22 @@ export const App: React.FC = () => {
 
           if (msg.activeScreenShare || msg.activePresenter) {
             const share = msg.activeScreenShare || msg.activePresenter;
+            const pId = share.userId || share.presenterId;
             setActivePresenter({
-              userId: share.userId || share.presenterId,
+              userId: pId,
               userName: share.name || share.userName || share.presenterName || 'Apresentador',
               qualityProfile: share.qualityProfile || 'SMOOTH_60FPS',
               startedAt: share.startedAt || new Date().toISOString(),
             });
+            if (pId !== currentUserIdRef.current) {
+              videoCodecsRef.current.initDecoder(share.codec || 'vp8');
+              if (msg.roomId || activeRoomRef.current?.id) {
+                wsClientRef.current.sendJson({
+                  type: 'request_keyframe',
+                  roomId: msg.roomId || activeRoomRef.current?.id,
+                });
+              }
+            }
           } else {
             setActivePresenter(null);
           }
@@ -424,6 +443,15 @@ export const App: React.FC = () => {
           setParticipants((prev) =>
             prev.map((p) => (p.id === pId ? { ...p, isScreenSharing: true } : p))
           );
+          if (pId !== currentUserIdRef.current) {
+            videoCodecsRef.current.initDecoder(msg.codec || 'vp8');
+            if (activeRoomRef.current) {
+              wsClientRef.current.sendJson({
+                type: 'request_keyframe',
+                roomId: activeRoomRef.current.id,
+              });
+            }
+          }
           break;
         }
 
@@ -810,6 +838,7 @@ export const App: React.FC = () => {
           type: 'start_screen_share',
           roomId: activeRoom.id,
           qualityProfile: profile,
+          codec: videoCodecsRef.current.getActiveCodec(),
           clientUserId: config.clientUserId,
         });
       }
