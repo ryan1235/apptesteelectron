@@ -903,19 +903,20 @@ export const App: React.FC = () => {
       setActiveRoom(details);
       setMessages(details.messages || []);
 
-      // Start Audio & Voice Chat
+      // Start Audio & Voice Chat (Auto-unmute and activate microphone instantly upon joining)
+      setIsMicMuted(false);
+      isMicMutedRef.current = false;
       audioManagerRef.current.setRoomId(roomId);
-      audioManagerRef.current.setMuted(isMicMuted);
-      if (!isMicMuted) {
-        await audioManagerRef.current.startMicrophone().catch(console.warn);
-      }
+      audioManagerRef.current.setMuted(false);
+      await audioManagerRef.current.startMicrophone().catch(console.warn);
+      await audioManagerRef.current.resume().catch(() => {});
 
       // Add local participant
       const selfParticipant: Participant = {
         id: currentUserId || 'usr-local',
         name: config.userName || 'Você',
         avatarUrl: config.avatarUrl || null,
-        micOn: !isMicMuted,
+        micOn: true,
         isSpeaking: false,
         isScreenSharing: isScreenSharing,
         volume: 100,
@@ -938,18 +939,16 @@ export const App: React.FC = () => {
         clientUserId: config.clientUserId,
         userName: config.userName,
         avatarUrl: config.avatarUrl || null,
-        micOn: !isMicMuted,
+        micOn: true,
       });
 
       // Synchronize initial mic state with server
-      if (!isMicMuted) {
-        wsClientRef.current.sendJson({
-          type: 'toggle_mic',
-          roomId,
-          micOn: true,
-          clientUserId: config.clientUserId,
-        });
-      }
+      wsClientRef.current.sendJson({
+        type: 'toggle_mic',
+        roomId,
+        micOn: true,
+        clientUserId: config.clientUserId,
+      });
     } catch (err: any) {
       console.error('Erro ao conectar na sala:', err);
     }

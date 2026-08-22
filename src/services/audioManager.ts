@@ -87,9 +87,18 @@ export class AudioManager {
 
   public setMuted(muted: boolean) {
     this.isMicMuted = muted;
+    if (this.micStream) {
+      this.micStream.getAudioTracks().forEach((t) => (t.enabled = !muted));
+    }
     if (muted && this.isSpeaking) {
       this.isSpeaking = false;
       this.onSpeakingChange?.(false);
+    }
+  }
+
+  public async resume(): Promise<void> {
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume().catch(() => {});
     }
   }
 
@@ -223,9 +232,14 @@ export class AudioManager {
   public async startMicrophone(): Promise<void> {
     try {
       const ctx = this.ensureAudioContext();
+      if (ctx.state === 'suspended') {
+        await ctx.resume().catch(() => {});
+      }
 
       if (this.micStream) {
-        return; // Already capturing
+        this.micStream.getAudioTracks().forEach((t) => (t.enabled = !this.isMicMuted));
+        this.startVADLoop();
+        return;
       }
 
       const constraints: MediaStreamConstraints = {
@@ -240,8 +254,9 @@ export class AudioManager {
       };
 
       this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
+      this.micStream.getAudioTracks().forEach((t) => (t.enabled = !this.isMicMuted));
       this.micSourceNode = ctx.createMediaStreamSource(this.micStream);
-      logger.success('AUDIO', `Microfone ativado com sucesso (Taxa: ${ctx.sampleRate} Hz, AEC: ${this.config.echoCancellation})`);
+      logger.success('AUDIO', `Microfone ativado automaticamente (Taxa: ${ctx.sampleRate} Hz, AEC: ${this.config.echoCancellation})`);
 
       // 1. High-Pass Filter (85Hz) to remove AC, desk rumble, and fan vibrations
       this.highPassFilterNode = ctx.createBiquadFilter();
