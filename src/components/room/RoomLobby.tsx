@@ -189,6 +189,8 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                     room.clientUserId === currentUserId ||
                     (room.createdBy?.name && room.createdBy.name.toLowerCase() === currentUserId.toLowerCase());
 
+                  const linkedGroup = groups.find((g) => g.id === room.groupId);
+
                   return (
                     <div
                       key={room.id}
@@ -229,6 +231,19 @@ export const RoomLobby: React.FC<RoomLobbyProps> = ({
                         <p className="text-xs text-discord-textMuted line-clamp-2 leading-relaxed">
                           {room.description || 'Sala ao vivo com aceleração GPU e voz sem ruído.'}
                         </p>
+
+                        {/* Linked Squad Badge or Public Badge */}
+                        {linkedGroup ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-discord-accent/15 text-discord-accent text-[11px] font-semibold border border-discord-accent/30 w-fit">
+                            <Layers size={11} />
+                            <span className="truncate">Squad: {linkedGroup.name}</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-[#1e1f22] text-discord-textMuted text-[11px] font-semibold w-fit">
+                            <Radio size={11} className="text-discord-green" />
+                            <span>Sala Pública Avulsa</span>
+                          </div>
+                        )}
 
                         {/* Custom Room ID Badge */}
                         {room.customRoomId && (

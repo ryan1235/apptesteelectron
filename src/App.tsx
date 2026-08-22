@@ -21,6 +21,7 @@ import { AudioManager } from './services/audioManager';
 import { WebCodecsVideoPipeline } from './services/videoCodecs';
 import { ScreenCapturer } from './services/screenCapturer';
 import { logger } from './services/logger';
+import { soundEffects } from './services/soundEffects';
 
 // Layout Components
 import { TitleBar } from './components/layout/TitleBar';
@@ -355,6 +356,9 @@ export const App: React.FC = () => {
               updated[existingIndex] = { ...updated[existingIndex], ...newParticipant };
               return updated;
             }
+            if (!isLocal) {
+              soundEffects.playUserJoined();
+            }
             return [...prev, newParticipant];
           });
           break;
@@ -366,15 +370,17 @@ export const App: React.FC = () => {
           const leftClientUserId = msg.clientUserId || (msg.user && msg.user.clientUserId);
 
           // Don't remove self on stale user_left from a previous socket connection
-          if (
+          const isMeLeft =
             leftId === currentUserIdRef.current ||
             (leftClientUserId && leftClientUserId === configRef.current.clientUserId) ||
-            (leftName && leftName.toLowerCase() === configRef.current.userName.toLowerCase())
-          ) {
+            (leftName && leftName.toLowerCase() === configRef.current.userName.toLowerCase());
+
+          if (isMeLeft) {
             break;
           }
 
           if (leftId || leftName) {
+            soundEffects.playUserLeft();
             setParticipants((prev) =>
               prev.filter(
                 (p) => p.id !== leftId && (!leftName || p.name.toLowerCase() !== leftName.toLowerCase())
@@ -413,7 +419,7 @@ export const App: React.FC = () => {
           break;
         }
 
-        case 'mic_updated': {
+        case 'mic_toggled': {
           const targetId = msg.userId || (msg.user && msg.user.id);
           const targetName = msg.userName || (msg.user && msg.user.name);
           const micOn = Boolean(msg.micOn !== undefined ? msg.micOn : msg.user?.micOn);
@@ -451,6 +457,14 @@ export const App: React.FC = () => {
             content: msg.content || msg.text || '',
             createdAt: msg.createdAt || new Date().toISOString(),
           };
+
+          const isMe =
+            chatMsg.userId === (currentUserIdRef.current || configRef.current.clientUserId) ||
+            chatMsg.userName.toLowerCase() === configRef.current.userName.toLowerCase();
+
+          if (!isMe) {
+            soundEffects.playMessage();
+          }
 
           setMessages((prev) => {
             const isDuplicate = prev.some(
@@ -606,6 +620,9 @@ export const App: React.FC = () => {
         return [selfParticipant, ...prev];
       });
 
+      // Play Discord join chime
+      soundEffects.playJoin();
+
       // Join via WebSocket (with clientUserId)
       wsClientRef.current.sendJson({
         type: 'join_room',
@@ -615,6 +632,22 @@ export const App: React.FC = () => {
         userName: config.userName,
         avatarUrl: config.avatarUrl || null,
       });
+
+      // Seamless Screen Share Continuity when switching rooms
+      if (isScreenSharing && localScreenStream) {
+        try {
+          await videoCodecsRef.current.stopEncoding();
+          await videoCodecsRef.current.startEncoding(localScreenStream, roomId, activeProfile);
+          wsClientRef.current.sendJson({
+            type: 'start_screen_share',
+            roomId,
+            qualityProfile: activeProfile,
+            clientUserId: config.clientUserId,
+          });
+        } catch (err) {
+          console.warn('Erro ao transferir compartilhamento de tela para nova sala:', err);
+        }
+      }
     } catch (err: any) {
       console.error('Erro ao conectar na sala:', err);
     }
@@ -622,6 +655,8 @@ export const App: React.FC = () => {
 
   // Leave room workflow
   const leaveRoom = () => {
+    soundEffects.playLeave();
+
     if (activeRoom) {
       wsClientRef.current.sendJson({
         type: 'leave_room',
@@ -691,6 +726,12 @@ export const App: React.FC = () => {
   // Toggle Microphone
   const handleToggleMic = async () => {
     const newMuted = !isMicMuted;
+    if (newMuted) {
+      soundEffects.playMute();
+    } else {
+      soundEffects.playUnmute();
+    }
+
     setIsMicMuted(newMuted);
     audioManagerRef.current.setMuted(newMuted);
     if (!newMuted) {
@@ -719,6 +760,11 @@ export const App: React.FC = () => {
   // Toggle Deafen
   const handleToggleDeafen = () => {
     const newDeafened = !isDeafened;
+    if (newDeafened) {
+      soundEffects.playMute();
+    } else {
+      soundEffects.playUnmute();
+    }
     setIsDeafened(newDeafened);
     audioManagerRef.current.setDeafened(newDeafened);
   };
@@ -908,17 +954,18 @@ export const App: React.FC = () => {
         {/* Channels / Active Users Sidebar */}
         <ChannelSidebar
           rooms={displayedRooms}
+          groups={groups}
           activeRoomId={activeRoom?.id}
           activeRoomParticipants={participants}
-          currentUserId={currentUserId}
           searchQuery={searchQuery}
           isSyncing={isSyncingRooms}
           onSearchChange={setSearchQuery}
           onSelectRoom={handleSelectRoom}
-          onOpenCreateModal={() => {
-            setCreateRoomDefaultGroupId(selectedGroupId || undefined);
+          onOpenCreateModal={(gId) => {
+            setCreateRoomDefaultGroupId(gId || selectedGroupId || undefined);
             setIsCreateModalOpen(true);
           }}
+          onOpenCreateGroupModal={() => setIsCreateGroupModalOpen(true)}
           onRefreshRooms={() => fetchRooms(false)}
           userName={config.userName}
           avatarUrl={config.avatarUrl}
