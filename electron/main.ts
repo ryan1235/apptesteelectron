@@ -174,6 +174,15 @@ function createOverlayWindow() {
     }
   });
 
+  overlayWindow.webContents.on('did-finish-load', () => {
+    if (lastOverlayState) {
+      overlayWindow?.webContents.send('overlay-state-updated', lastOverlayState);
+    }
+    if (lastDetectedGame) {
+      overlayWindow?.webContents.send('game-activity-detected', lastDetectedGame);
+    }
+  });
+
   overlayWindow.on('closed', () => {
     overlayWindow = null;
   });
@@ -389,8 +398,9 @@ ipcMain.on('update-overlay-state', (_event, state) => {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.webContents.send('overlay-state-updated', state);
 
-    // Only show overlay when in a room AND a game is actively detected
-    const shouldShow = Boolean(state.activeRoomTitle && lastDetectedGame);
+    // Only show overlay when enabled, in a room, and a game is actively detected
+    const isEnabled = state.enableInGameOverlay !== false;
+    const shouldShow = Boolean(isEnabled && state.activeRoomTitle && lastDetectedGame && !mainWindow?.isFocused());
     if (shouldShow && !overlayWindow.isVisible()) {
       overlayWindow.showInactive();
     } else if (!shouldShow && !manualOverlayToggle && overlayWindow.isVisible()) {

@@ -23,6 +23,7 @@ export type OverlayPipSize = 'small' | 'medium' | 'large';
 export type OverlayVoiceMode = 'speaking_only' | 'all';
 
 export interface OverlayState {
+  enableInGameOverlay?: boolean;
   activeRoomTitle?: string;
   participants: OverlayParticipant[];
   recentMessages: OverlayRecentMessage[];

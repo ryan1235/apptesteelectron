@@ -338,6 +338,7 @@ export interface OverlayRecentMessage {
 }
 
 export interface OverlayState {
+  enableInGameOverlay?: boolean;
   activeRoomTitle?: string;
   participants: OverlayParticipant[];
   recentMessages: OverlayRecentMessage[];

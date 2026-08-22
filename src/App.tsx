@@ -420,6 +420,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (window.electronAPI?.updateOverlayState) {
       window.electronAPI.updateOverlayState({
+        enableInGameOverlay: config.enableInGameOverlay,
         activeRoomTitle: activeRoom?.title,
         participants: participants.map((p) => ({
           id: p.id,

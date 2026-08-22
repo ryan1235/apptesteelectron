@@ -67,14 +67,13 @@ export const InGameOverlay: React.FC = () => {
         setState((prev) => ({
           ...prev,
           ...newState,
-          // Preserve local position customizations if already customized
-          voicePosition: prev.voicePosition || newState.voicePosition || 'top-left',
-          pipPosition: prev.pipPosition || newState.pipPosition || 'top-right',
-          chatPosition: prev.chatPosition || newState.chatPosition || 'bottom-left',
-          pipSize: prev.pipSize || newState.pipSize || 'medium',
-          pipOpacity: prev.pipOpacity ?? newState.pipOpacity ?? 90,
-          voiceMode: prev.voiceMode || newState.voiceMode || 'speaking_only',
-          showPip: prev.showPip ?? newState.showPip ?? true,
+          voicePosition: newState.voicePosition || prev.voicePosition || 'top-left',
+          pipPosition: newState.pipPosition || prev.pipPosition || 'top-right',
+          chatPosition: newState.chatPosition || prev.chatPosition || 'bottom-left',
+          pipSize: newState.pipSize || prev.pipSize || 'medium',
+          pipOpacity: newState.pipOpacity !== undefined ? newState.pipOpacity : (prev.pipOpacity ?? 90),
+          voiceMode: newState.voiceMode || prev.voiceMode || 'speaking_only',
+          showPip: newState.showPip !== undefined ? newState.showPip : (prev.showPip ?? true),
         }));
       });
 
@@ -117,19 +116,15 @@ export const InGameOverlay: React.FC = () => {
     setState((prev) => {
       const next = { ...prev, ...updates };
       try {
-        localStorage.setItem(
-          'discord_in_game_overlay_prefs_v1',
-          JSON.stringify({
-            voicePosition: next.voicePosition,
-            pipPosition: next.pipPosition,
-            chatPosition: next.chatPosition,
-            pipSize: next.pipSize,
-            pipOpacity: next.pipOpacity,
-            voiceMode: next.voiceMode,
-            showPip: next.showPip,
-          })
-        );
-        window.electronAPI?.saveOverlayConfig?.(updates);
+        window.electronAPI?.saveOverlayConfig?.({
+          overlayVoicePosition: next.voicePosition,
+          overlayPipPosition: next.pipPosition,
+          overlayChatPosition: next.chatPosition,
+          overlayPipSize: next.pipSize,
+          overlayPipOpacity: next.pipOpacity,
+          overlayVoiceMode: next.voiceMode,
+          overlayShowPip: next.showPip,
+        } as any);
       } catch (e) {}
       return next;
     });
