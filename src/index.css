@@ -48,3 +48,27 @@
   box-shadow: 0 0 0 2px #23a55a, 0 0 12px rgba(35, 165, 90, 0.7);
   border-color: #23a55a;
 }
+
+@keyframes floatUp {
+  0% {
+    transform: translateY(0) scale(0.6) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1.15) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-120px) scale(1) rotate(5deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(-260px) scale(0.8) rotate(-10deg);
+    opacity: 0;
+  }
+}
+
+.animate-float-up {
+  animation: floatUp 2.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+

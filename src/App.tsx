@@ -75,6 +75,10 @@ export const App: React.FC = () => {
     codec: 'H.264 GPU (0xAA)',
   });
 
+  // Chat and Reactions state
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+
   // Modal Visibility States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState<boolean>(false);
@@ -386,6 +390,33 @@ export const App: React.FC = () => {
           break;
         }
 
+        case 'typing': {
+          const sender = msg.userName || 'Alguém';
+          if (sender.toLowerCase() === configRef.current.userName.toLowerCase()) break;
+          if (msg.isTyping) {
+            setTypingUsers((prev) => Array.from(new Set([...prev, sender])));
+          } else {
+            setTypingUsers((prev) => prev.filter((u) => u.toLowerCase() !== sender.toLowerCase()));
+          }
+          break;
+        }
+
+        case 'reaction': {
+          const emoji = msg.emoji;
+          if (!emoji) break;
+          const newReaction: FloatingReaction = {
+            id: 'react-' + Math.random().toString(36).substring(2, 9),
+            emoji,
+            userName: msg.userName || '',
+            xOffset: Math.floor(Math.random() * 50) + 30,
+          };
+          setReactions((prev) => [...prev, newReaction]);
+          setTimeout(() => {
+            setReactions((prev) => prev.filter((r) => r.id !== newReaction.id));
+          }, 3000);
+          break;
+        }
+
         case 'request_keyframe':
           videoCodecsRef.current.requestKeyFrame();
           break;
@@ -525,6 +556,8 @@ export const App: React.FC = () => {
     setParticipants([]);
     setActivePresenter(null);
     setMessages([]);
+    setTypingUsers([]);
+    setReactions([]);
     fetchRooms();
   };
 
@@ -584,8 +617,8 @@ export const App: React.FC = () => {
     audioManagerRef.current.setDeafened(newDeafened);
   };
 
-  // Screen Sharing workflow
-  const handleToggleScreenShare = () => {
+  // Toggle Screen Share
+  const handleToggleScreenShare = async () => {
     if (isScreenSharing) {
       stopScreenShare();
     } else {
@@ -593,41 +626,34 @@ export const App: React.FC = () => {
     }
   };
 
-  const startScreenShare = async (
-    sourceId: string,
-    profile: QualityProfile,
-    captureAudio: boolean
-  ) => {
-    if (!activeRoom) return;
-
+  const startScreenShare = async (sourceId: string) => {
     try {
-      const result = await screenCapturerRef.current.startCapture(
-        sourceId,
-        profile,
-        captureAudio
-      );
-
-      setLocalScreenStream(result.stream);
+      const stream = await screenCapturerRef.current.startCapture(sourceId);
+      setLocalScreenStream(stream);
       setIsScreenSharing(true);
-      setActiveProfile(profile);
 
-      // WebCodecs GPU encoding
-      await videoCodecsRef.current.startEncoding(result.stream, activeRoom.id, profile);
+      if (activeRoom) {
+        // Start GPU WebCodecs Encoder
+        await videoCodecsRef.current.startEncoding(
+          stream,
+          activeRoom.id,
+          activeProfile
+        );
 
-      // Notify WebSocket server
-      wsClientRef.current.sendJson({
-        type: 'start_screen_share',
-        roomId: activeRoom.id,
-        qualityProfile: profile,
-      });
+        // Notify room via WebSocket
+        wsClientRef.current.sendJson({
+          type: 'start_screen_share',
+          roomId: activeRoom.id,
+          qualityProfile: activeProfile,
+        });
+      }
 
-      // Handle stream end (user stops via native OS bar)
-      result.stream.getVideoTracks()[0].onended = () => {
+      // Handle stream end (user stops via system OS bar)
+      stream.getVideoTracks()[0].onended = () => {
         stopScreenShare();
       };
     } catch (err: any) {
-      console.error('Erro ao iniciar compartilhamento de tela:', err);
-      alert('Não foi possível iniciar o compartilhamento de tela.');
+      alert(`Erro ao iniciar compartilhamento de tela: ${err.message}`);
     }
   };
 
@@ -648,10 +674,55 @@ export const App: React.FC = () => {
   // Send Chat Message
   const handleSendMessage = (text: string) => {
     if (!activeRoom) return;
+    const chatMsg: ChatMessage = {
+      id: 'msg-' + Date.now(),
+      roomId: activeRoom.id,
+      userId: currentUserId || 'usr-local',
+      userName: config.userName,
+      avatarUrl: config.avatarUrl || null,
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, chatMsg]);
+
     wsClientRef.current.sendJson({
       type: 'chat_message',
       roomId: activeRoom.id,
       text,
+      content: text,
+    });
+  };
+
+  // Send Emoji Reaction
+  const handleSendReaction = (emoji: string) => {
+    if (!activeRoom) return;
+    const newReaction: FloatingReaction = {
+      id: 'react-' + Math.random().toString(36).substring(2, 9),
+      emoji,
+      userName: config.userName,
+      xOffset: Math.floor(Math.random() * 50) + 30,
+    };
+    setReactions((prev) => [...prev, newReaction]);
+    setTimeout(() => {
+      setReactions((prev) => prev.filter((r) => r.id !== newReaction.id));
+    }, 3000);
+
+    wsClientRef.current.sendJson({
+      type: 'reaction',
+      roomId: activeRoom.id,
+      emoji,
+      userName: config.userName,
+    });
+  };
+
+  // Send Typing state
+  const handleTyping = (isTyping: boolean) => {
+    if (!activeRoom) return;
+    wsClientRef.current.sendJson({
+      type: 'typing',
+      roomId: activeRoom.id,
+      isTyping,
+      userName: config.userName,
     });
   };
 
@@ -707,11 +778,12 @@ export const App: React.FC = () => {
           onOpenSettings={() => setIsSettingsModalOpen(true)}
         />
 
-        {/* Channel Sidebar (Rooms List & User Footer) */}
+        {/* Channels / Active Users Sidebar */}
         <ChannelSidebar
           rooms={rooms}
           activeRoomId={activeRoom?.id}
           activeRoomParticipants={participants}
+          currentUserId={currentUserId}
           searchQuery={searchQuery}
           isSyncing={isSyncingRooms}
           onSearchChange={setSearchQuery}
@@ -744,6 +816,8 @@ export const App: React.FC = () => {
             isScreenSharing={isScreenSharing}
             activeProfile={activeProfile}
             messages={messages}
+            typingUsers={typingUsers}
+            reactions={reactions}
             onRequestKeyframe={() => {
               if (activeRoom) {
                 wsClientRef.current.sendJson({
@@ -766,6 +840,8 @@ export const App: React.FC = () => {
               }
             }}
             onSendMessage={handleSendMessage}
+            onSendReaction={handleSendReaction}
+            onTyping={handleTyping}
             onLeaveRoom={leaveRoom}
             onSetUserVolume={(userId, vol) => {
               audioManagerRef.current.setUserVolume(userId, vol);

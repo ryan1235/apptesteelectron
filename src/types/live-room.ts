@@ -138,6 +138,13 @@ export interface PresenterInfo {
 // Protocolo WebSocket TX & RX
 // ==========================================
 
+export interface FloatingReaction {
+  id: string;
+  emoji: string;
+  userName: string;
+  xOffset: number; // 0 to 100% position on screen
+}
+
 export type ClientTxMessage =
   | { type: 'join_room'; roomId: string; password?: string; userName: string; avatarUrl?: string | null }
   | { type: 'toggle_mic'; roomId: string; micOn: boolean }
@@ -145,19 +152,23 @@ export type ClientTxMessage =
   | { type: 'start_screen_share'; roomId: string; qualityProfile: QualityProfile }
   | { type: 'stop_screen_share'; roomId: string }
   | { type: 'request_keyframe'; roomId: string }
-  | { type: 'chat_message'; roomId: string; text: string }
+  | { type: 'chat_message'; roomId: string; text?: string; content?: string }
+  | { type: 'typing'; roomId: string; isTyping: boolean; userName?: string }
+  | { type: 'reaction'; roomId: string; emoji: string; userName?: string }
   | { type: 'leave_room'; roomId: string };
 
 export type ServerRxMessage =
   | { type: 'connected'; userId: string; userName: string }
-  | { type: 'room_state'; room?: Partial<RoomDetails>; participants: Participant[]; activePresenter?: PresenterInfo | null }
-  | { type: 'user_joined'; user: Participant }
+  | { type: 'room_state'; room?: Partial<RoomDetails>; participants: Participant[]; activePresenter?: PresenterInfo | null; activeScreenShare?: any; yourUserId?: string }
+  | { type: 'user_joined'; user?: Participant; participant?: Participant }
   | { type: 'user_left'; userId: string }
-  | { type: 'screen_share_started'; presenterId: string; presenterName: string; qualityProfile: QualityProfile }
-  | { type: 'screen_share_stopped'; presenterId: string }
+  | { type: 'screen_share_started'; presenterId?: string; userId?: string; name?: string; presenterName?: string; qualityProfile: QualityProfile }
+  | { type: 'screen_share_stopped'; presenterId?: string; userId?: string }
   | { type: 'mic_updated'; userId: string; micOn: boolean }
   | { type: 'speaking_updated'; userId: string; isSpeaking: boolean }
   | { type: 'chat_message'; message?: ChatMessage; id?: string; roomId?: string; userId?: string; userName?: string; avatarUrl?: string | null; content?: string; text?: string; createdAt?: string }
+  | { type: 'typing'; userId?: string; userName?: string; isTyping?: boolean }
+  | { type: 'reaction'; emoji?: string; userName?: string; userId?: string }
   | { type: 'request_keyframe'; roomId?: string }
   | { type: 'room_closed'; roomId: string; reason?: string }
   | { type: 'auth_required'; error?: string };

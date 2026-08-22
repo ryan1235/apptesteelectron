@@ -40,9 +40,9 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
   rooms,
   activeRoomId,
   activeRoomParticipants = [],
-  searchQuery,
+  searchQuery = '',
   isSyncing = false,
-  onSearchChange,
+  onSearchChange = () => {},
   onSelectRoom,
   onOpenCreateModal,
   onRefreshRooms,
@@ -56,10 +56,11 @@ export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({
   onOpenSettings,
   onOpenLogin,
 }) => {
+  const query = (searchQuery || '').toLowerCase();
   const filteredRooms = rooms.filter(
     (r) =>
-      r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      (r.title || '').toLowerCase().includes(query) ||
+      (r.description || '').toLowerCase().includes(query)
   );
 
   return (

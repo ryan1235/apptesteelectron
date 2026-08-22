@@ -18,6 +18,7 @@ interface ControlsBarProps {
   isScreenSharing: boolean;
   activeProfile: QualityProfile;
   isChatOpen: boolean;
+  unreadCount?: number;
   onToggleMic: () => void;
   onToggleDeafen: () => void;
   onToggleScreenShare: () => void;
@@ -32,6 +33,7 @@ export const ControlsBar: React.FC<ControlsBarProps> = ({
   isScreenSharing,
   activeProfile,
   isChatOpen,
+  unreadCount = 0,
   onToggleMic,
   onToggleDeafen,
   onToggleScreenShare,
@@ -137,11 +139,11 @@ export const ControlsBar: React.FC<ControlsBarProps> = ({
         </button>
       </div>
 
-      {/* Right Side Chat Toggle */}
+      {/* Right Side Chat Toggle with Unread Badge */}
       <div className="flex items-center gap-2">
         <button
           onClick={onToggleChat}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all hover:scale-105 active:scale-95 shadow-sm border ${
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all hover:scale-105 active:scale-95 shadow-sm border ${
             isChatOpen
               ? 'bg-discord-accent text-white border-discord-accent shadow-discord-accent/20'
               : 'bg-[#2b2d31]/80 text-discord-textNormal border-[#383a40] hover:bg-[#35373c] hover:text-white'
@@ -150,6 +152,13 @@ export const ControlsBar: React.FC<ControlsBarProps> = ({
         >
           <MessageSquare size={16} />
           <span>Chat</span>
+
+          {/* Unread Messages Pill */}
+          {!isChatOpen && unreadCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.2 bg-discord-red text-white text-[10px] font-bold rounded-full shadow-lg animate-bounce border-2 border-[#1e1f22]">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
         </button>
       </div>
     </div>
